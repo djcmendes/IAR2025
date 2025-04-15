@@ -1,4 +1,5 @@
 *sync-conflicts*
+.*.wbproj
 
 # webots gitignore
 
@@ -988,4 +989,3 @@ cython_debug/
 
 # PyPI configuration file
 .pypirc
-/thymio/controllers/.direnv
