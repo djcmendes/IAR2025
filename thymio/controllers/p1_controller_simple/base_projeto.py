@@ -2,9 +2,10 @@ import numpy as np
 from controller import Supervisor
 import random
 import math
+import numpy as np
 
 # Simulation parameters
-TIME_STEP = 64
+TIME_STEP = 5
 POPULATION_SIZE = 10
 PARENTS_KEEP = 3
 INPUT = 5
@@ -27,7 +28,7 @@ def random_position(min_radius, max_radius, z):
     angle = random_orientation()
     x = radius * np.cos(angle[3])
     y = radius * np.sin(angle[3])
-    return [x, y, z]
+    return (x, y, z)
 
 class Evolution:
     def __init__(self):
@@ -74,45 +75,22 @@ class Evolution:
 
         self.__n = 0
         self.prev_position = self.supervisor.getSelf().getPosition()
-        self.time_in_line = 0
         
-        self.population = [{'weights': np.random.uniform(0, 1, 6), 'fitness': 0}
-                   for _ in range(POPULATION_SIZE)]
         
+   
 
     def reset(self, seed=None, options=None):
-        self.time_in_line = 0
-        # self.__n = 0
+        
         random_rotation = [0, 0, 1, np.random.uniform(0, 2 * np.pi)]
         self.supervisor.getFromDef('ROBOT').getField('rotation').setSFRotation(random_rotation)
-        pos = random_position(-1, 1, 0.1)
-        # print(f"Random position: {pos}")
-        self.supervisor.getFromDef('ROBOT').getField('translation').setSFVec3f(pos)
+        self.supervisor.getFromDef('ROBOT').getField('translation').setSFVec3f([0, 0, 0])
         
         self.left_motor.setVelocity(0)
         self.right_motor.setVelocity(0)
         
-    def select_parents(self):
-        # Ordena pela fitness (maior é melhor)
-        sorted_population = sorted(self.population, key=lambda x: x['fitness'], reverse=True)
-        parents = sorted_population[:PARENTS_KEEP]
-        return parents
-
-    def crossover(self, parent1, parent2):
-        # Crossover de um ponto
-        point = random.randint(1, len(parent1) - 1)
-        child1_weights = np.concatenate([parent1[:point], parent2[point:]])
-        child2_weights = np.concatenate([parent2[:point], parent1[point:]])
-        return child1_weights, child2_weights
-
-    def mutate(self, weights):
-        for i in range(len(weights)):
-            if random.random() < MUTATION_RATE:
-                weights[i] += np.random.normal(0, MUTATION_SIZE)
-        return weights
 
     def runStep(self, weights):
-        # self.__n += 1  
+        
         self.collision = bool(
                 self.__n > 10 and
                 (self.__ir_0.getValue()>4300 or 
@@ -124,62 +102,34 @@ class Evolution:
                 self.__ir_6.getValue()>4300)
             )
         
-        ground_sensor_left = (self.ground_sensors[0].getValue()/1023 - .6)/.2>.3 # True -> chao Flase -> Linha Preta
+        ground_sensor_left = (self.ground_sensors[0].getValue()/1023 - .6)/.2>.3
         ground_sensor_right = (self.ground_sensors[1].getValue()/1023 - .6)/.2>.3
-        # print(f"Ground sensor left: {ground_sensor_left}, Ground sensor right: {ground_sensor_right}")
-        # if ground_sensor_left or ground_sensor_right:
-        #     self.time_in_line += 1
-
-        if not ground_sensor_left or not ground_sensor_right:
-            self.time_in_line += 5
-        elif not ground_sensor_left and not ground_sensor_right:
-            self.time_in_line += 10
-        # return self.time_in_line
 
         left_speed =  ground_sensor_left * weights[0] + ground_sensor_right * weights[1] + weights[2]
         right_speed = ground_sensor_left * weights[3] + ground_sensor_right * weights[4] + weights[5]
         
-        self.left_motor.setVelocity(max(min(left_speed, 9), -9)) # Cap na velocidade
+        self.left_motor.setVelocity(max(min(left_speed, 9), -9))
         self.right_motor.setVelocity(max(min(right_speed, 9), -9))
 
         self.supervisor.step(self.timestep)
 
-        # self.calculateFitness(ground_sensor_left,ground_sensor_right)
-        
+
+
    
     def run(self):
-        for g in range(GENERATIONS):
-            print(f"\n=== Geração {g + 1} ===")
-            k = 0
-            for i in self.population:
-                k += 1
-                self.evaluation_start_time = self.supervisor.getTime()
-                # print(f"Indivíduo: {k} {i['weights']}")
-                self.reset()
-                while self.supervisor.getTime() - self.evaluation_start_time < EVALUATION_TIME and not self.collision:
-                    self.runStep(i['weights'])
-                # print(f"Fitness: {i['fitness']}")
-                i['fitness'] = self.time_in_line / EVALUATION_TIME
-                print(f"Indivíduo: {k} {i['weights']} Fitness: {i['fitness']}")
-            parents = self.select_parents()
-
-            # Nova geração com pais + filhos
-            new_population = parents.copy()
-            while len(new_population) < POPULATION_SIZE:
-                p1, p2 = random.sample(parents, 2)
-                c1_weights, c2_weights = self.crossover(p1['weights'], p2['weights'])
-                c1 = {'weights': self.mutate(c1_weights)}
-                c2 = {'weights': self.mutate(c2_weights)}
-                new_population.extend([c1, c2])
-
-            self.population = new_population[:POPULATION_SIZE]
+        self.evaluation_start_time = self.supervisor.getTime()
+        weights = [1,1,1,1,1,2]
+        while self.supervisor.getTime() - self.evaluation_start_time < EVALUATION_TIME and not self.collision:
+            self.runStep(weights)
 
 
 # Main evolutionary loop
 def main():
+
     # Run the evolutionary algorithm
     controller = Evolution()
     controller.run()
 
 if __name__ == "__main__":
     main()
+
