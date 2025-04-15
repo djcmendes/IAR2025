@@ -1,0 +1,23 @@
+#VRML_SIM R2025a utf8
+
+# in projecto1_LINE.wbt you can add:
+# EXTERNPROTO "/mnt/DataDisk/PersonalFiles/2025/Masters/IAR - Inteligência Artificial para a Robótica/IAR2025/thymio/worlds/protos/MyThymio.proto"
+# Then this will (I think) override the options in there
+
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2025a/projects/robots/mobsya/thymio/protos/Thymio2.proto"
+
+PROTO MyThymio [
+  field SFString   controller          "<extern>"  # Only expose the controller field
+  # Hidden fields (with defaults) to satisfy Thymio2 requirements
+  hiddenField SFVec3f    translation         0 0 0
+  hiddenField SFRotation rotation            0 0 1 0
+  hiddenField SFBool     supervisor          TRUE
+]
+{
+  Thymio2 {
+    translation IS translation
+    rotation IS rotation
+    controller IS controller
+    supervisor IS supervisor
+  }
+}
