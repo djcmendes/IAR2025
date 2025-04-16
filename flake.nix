@@ -20,6 +20,7 @@
     in {
       default = pkgs.mkShell {
         packages = [
+          pkgs.texlive.combined.scheme-full  # Full TeX Live installation
           #pkgs.jupyter-all
           (pkgs.python311.withPackages (python-pkgs: with python-pkgs; [
             tensorflow
@@ -39,6 +40,9 @@
           # echo "Run with > jupyter notebook"
 
           # jupyter notebook
+
+          echo "TeX Live full environment is ready!"
+          echo "Build with \`latexmk --shell-escape -f -synctex=1 -interaction=nonstopmode -file-line-error -pdf ./main\`"
         '';
       };
     });

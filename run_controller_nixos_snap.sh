@@ -1,24 +1,21 @@
 #!/usr/bin/env bash
 
 # RUN WITH:
-# steam-run bash run_controller.sh ./aula1/aula1.py
+# steam-run bash run_controller_nixos_snap.sh ./thymio/controllers/p1_controller_simple/p1_controller_simple.py
 
-# run_controller.sh
 set -e
 
 # Configure Webots paths
 export WEBOTS_HOME="/snap/webots/current/usr/share/webots"
 export LD_LIBRARY_PATH="$WEBOTS_HOME/lib/controller:$LD_LIBRARY_PATH"
 
-# Virtual environment path
-# VENV_DIR="$(pwd)/.venv"
-
-# Use direnv's environment if available
+# Use direnv's environment
 echo "Loading direnv environment..."
 direnv allow .
 eval "$(direnv export bash)"
 
-# Create virtual environment if not exists
+# Create virtual environment
+# VENV_DIR="$(pwd)/.venv"
 #if [ ! -d "$VENV_DIR" ]; then
 #    echo "Creating virtual environment..."
 #    python -m venv "$VENV_DIR"
