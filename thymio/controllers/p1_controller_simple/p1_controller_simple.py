@@ -14,7 +14,7 @@ GENOME_SIZE = (1+INPUT)*HIDDEN  + (HIDDEN+1)*OUTPUT
 GENERATIONS = 300
 MUTATION_RATE = 0.2
 MUTATION_SIZE = 0.05
-EVALUATION_TIME = 30  # Simulated seconds per individual
+EVALUATION_TIME = 300  # Simulated seconds per individual
 RANGE = 5
 
 

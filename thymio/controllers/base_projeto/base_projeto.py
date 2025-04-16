@@ -113,15 +113,6 @@ class Evolution:
 
         self.supervisor.step(self.timestep)
 
-        if not ground_sensor_left and not ground_sensor_right:
-            self.time_in_line += 10  # Melhor caso: bem na linha
-        elif not ground_sensor_left or not ground_sensor_right:
-            self.time_in_line += 5   # Parte da linha
-        else:
-            self.time_in_line += 0   # Fora da linha
-
-        self.supervisor.step(self.timestep)
-
 
 
    
@@ -141,4 +132,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
