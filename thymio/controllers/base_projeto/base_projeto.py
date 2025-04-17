@@ -119,6 +119,7 @@ class Evolution:
 
    
     def run(self):
+        self.reset()
         self.evaluation_start_time = self.supervisor.getTime()
         weights = [1,1,1,1,1,2]
         while self.supervisor.getTime() - self.evaluation_start_time < EVALUATION_TIME and not self.collision:
