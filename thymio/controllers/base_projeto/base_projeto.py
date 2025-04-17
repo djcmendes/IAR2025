@@ -114,9 +114,6 @@ class Evolution:
         self.right_motor.setVelocity(max(min(right_speed, 9), -9))
 
         self.supervisor.step(self.timestep)
-
-
-
    
     def run(self):
         self.reset()
