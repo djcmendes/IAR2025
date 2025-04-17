@@ -3,6 +3,8 @@ from controller import Supervisor
 import random
 import math
 import numpy as np
+# from ann_controller import ANNController
+
 
 # Simulation parameters
 TIME_STEP = 5
@@ -132,4 +134,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-
