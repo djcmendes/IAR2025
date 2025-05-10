@@ -1,4 +1,4 @@
-#VRML_SIM R2023b utf8
+#VRML_SIM R2025a utf8
 
 EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/projects/objects/backgrounds/protos/TexturedBackground.proto"
 EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/projects/objects/backgrounds/protos/TexturedBackgroundLight.proto"
@@ -18,8 +18,8 @@ WorldInfo {
   ]
 }
 Viewpoint {
-  orientation -0.1483389531096772 0.9493490210739091 0.2770053991826434 1.0271784979739993
-  position -2.882955334832513 -0.822338810716225 5.158222263506483
+  orientation 0.07467529687972074 0.9938030421847941 -0.08233537137934022 1.4794882441123323
+  position -0.5304478607056327 -0.04498767596501253 5.735926251803943
   follow "Thymio II"
   followType "None"
 }
@@ -28,11 +28,12 @@ TexturedBackground {
 TexturedBackgroundLight {
 }
 DEF ROBOT Thymio2 {
-  hidden position_0_0 -2.4222915776098634e-15
-  hidden position_0_1 5.583916002781828e-16
-  translation -3.863638293327698e-08 -4.698726670769593e-09 0.9999799321804731
-  rotation 0.004752585103947183 0.0003023276245273692 0.9999886607021288 -3.0145230111133405
-  controller "thymio_rl_controller"
+  hidden position_0_0 7.309789524177447e-12
+  hidden position_0_1 7.310999778487666e-12
+  hidden rotation_2 0.5773502694611745 0.5773502694611745 0.5773502686465283 2.0943950008146586
+  translation -3.863635381420871e-08 -4.698984057763256e-09 0.9999799321804733
+  rotation 0.004752585103946987 0.0003023276245256458 0.9999886607021289 -3.0145230111144676
+  controller "p2_thymio_rl_controller_RecurrentPPO"
   window "thymio2"
   supervisor TRUE
 }
@@ -90,4 +91,41 @@ SolidBox {
     roughness 0.5
     metalness 0
   }
+}
+Group {
+  children [
+    DEF OBS_0 SolidBox {
+      translation -0.3910977592633759 0.02 0.010437248493796791
+      rotation 0 1 0 1.440583116538829
+      name "obs0"
+      size 0.1 0.04 0.1
+      appearance PBRAppearance {
+        baseColor 1 0 0
+        roughness 1
+        metalness 0
+      }
+    }
+    DEF OBS_1 SolidBox {
+      translation -0.29683017411612705 0.02 0.23930030259453317
+      rotation 0 1 0 -0.2597156019598792
+      name "obs1"
+      size 0.1 0.04 0.1
+      appearance PBRAppearance {
+        baseColor 0 1 0
+        roughness 1
+        metalness 0
+      }
+    }
+    DEF OBS_2 SolidBox {
+      translation 0.38156107995554955 0.02 0.18655706821529827
+      rotation 0 1 0 1.765817098545635
+      name "obs2"
+      size 0.1 0.04 0.1
+      appearance PBRAppearance {
+        baseColor 0 0 1
+        roughness 1
+        metalness 0
+      }
+    }
+  ]
 }
