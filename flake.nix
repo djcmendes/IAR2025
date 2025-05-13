@@ -22,7 +22,7 @@
         packages = [
           pkgs.texlive.combined.scheme-full  # Full TeX Live installation
           #pkgs.jupyter-all
-          (pkgs.python311.withPackages (python-pkgs: with python-pkgs; [
+          (pkgs.python312.withPackages (python-pkgs: with python-pkgs; [
             tensorflow
             pandas
             numpy
@@ -30,6 +30,8 @@
             matplotlib
             sympy
             virtualenv
+            gymnasium
+            stable-baselines3
             #torch
           ]))
           # pkgs.steam-run

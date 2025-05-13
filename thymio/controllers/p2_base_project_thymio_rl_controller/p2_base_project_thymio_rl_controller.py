@@ -3,19 +3,15 @@
 #
 # Template to use SB3 to train a Thymio in Webots.
 #
+import sys
 
-try:
-    import time
-    import gymnasium as gym
-    import numpy as np
-    import math
-    from stable_baselines3.common.callbacks import CheckpointCallback
-    from sb3_contrib import RecurrentPPO
-    from controller import Supervisor
-
-except ImportError:
-    sys.exit('Please make sure you have all dependencies installed.')
-
+import time
+import gymnasium as gym
+import numpy as np
+import math
+from stable_baselines3.common.callbacks import CheckpointCallback
+from sb3_contrib import RecurrentPPO
+from controller import Supervisor
 
 #
 # Structure of a class to create an OpenAI Gym in Webots.
