@@ -24,6 +24,8 @@
           #pkgs.jupyter-all
           (pkgs.python312.withPackages (python-pkgs: with python-pkgs; [
             tensorflow
+            tensorboard
+            protobuf
             pandas
             numpy
             jupyter
@@ -38,6 +40,7 @@
         ];
 
         shellHook = ''
+          export PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=python
           # echo "Development shell ready!"
           # echo "Run with > jupyter notebook"
 

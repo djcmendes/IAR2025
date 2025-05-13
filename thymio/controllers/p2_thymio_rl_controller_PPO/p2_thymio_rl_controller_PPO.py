@@ -4,8 +4,19 @@
 # PPO Training for Thymio Robot in Webots.
 #
 
+import tensorflow
+print("TensorFlow imported successfully")
 try:
-    import sys
+    import tensorboard
+    print("TensorBoard imported successfully")
+except ImportError as e:
+    print(f"Error importing TensorBoard: {e}")
+except AttributeError as e:
+    print(f"AttributeError related to TensorBoard/Protobuf: {e}")
+
+import sys
+
+try:
     import time
     import gymnasium as gym
     import numpy as np
@@ -124,8 +135,13 @@ class OpenAIGymEnvironment(Supervisor, gym.Env):
         left_speed, right_speed = action
 
         MAX_SPEED = 6.28
-        self.left_motor.setVelocity(float(np.clip(left_speed, -1, 1)) * MAX_SPEED)
-        self.right_motor.setVelocity(float(np.clip(right_speed, -1, 1)) * MAX_SPEED)
+        actual_left_vel = float(np.clip(left_speed, -1, 1)) * MAX_SPEED
+        actual_right_vel = float(np.clip(right_speed, -1, 1)) * MAX_SPEED
+        
+        print(f"Step {self.__n}: Setting motor vels = [{actual_left_vel:.4f}, {actual_right_vel:.4f}]") # DEBUG
+        
+        self.left_motor.setVelocity(actual_left_vel)
+        self.right_motor.setVelocity(actual_right_vel)
 
         for _ in range(10):
             super().step(self.__timestep)
@@ -174,6 +190,68 @@ def main():
     model.learn(total_timesteps=10000)  # ajustar conforme testes
     model.save("ppo_thymio")
 
+def test():
+    print("Starting test() for basic robot movement...")
+    
+    # 1. Create an instance of your environment.
+    # The max_episode_steps doesn't really matter for this direct control test.
+    robot_controller = OpenAIGymEnvironment(max_episode_steps=100)
+
+    # 2. Ensure motors are available (they should be initialized in __init__)
+    if robot_controller.left_motor is None or robot_controller.right_motor is None:
+        print("CRITICAL in test(): Motors not found. Aborting test.")
+        return
+    print("Motors appear to be initialized in test().")
+
+    # 3. Define a speed for the motors (e.g., rad/s)
+    # MAX_SPEED_WEBOTS in your class is 6.28. Let's try a moderate speed.
+    test_forward_speed = 3.0  # rad/s
+    print(f"Setting motor velocities to: {test_forward_speed} rad/s")
+    robot_controller.left_motor.setVelocity(test_forward_speed)
+    robot_controller.right_motor.setVelocity(test_forward_speed)
+
+    # 4. Let the simulation run for a certain number of Webots steps
+    # Access the private __timestep variable via its mangled name for this test
+    # This is generally not good practice but acceptable for a direct test script.
+    webots_timestep_duration = robot_controller._OpenAIGymEnvironment__timestep
+    if webots_timestep_duration <= 0:
+        print(f"CRITICAL in test(): Invalid Webots timestep: {webots_timestep_duration}. Aborting.")
+        return
+        
+    simulation_run_steps = 200  # Run for 200 Webots basic timesteps
+    print(f"Running Webots simulation for {simulation_run_steps} steps of {webots_timestep_duration}ms each...")
+
+    for i in range(simulation_run_steps):
+        # Call the step method of the SUPERVISOR class directly.
+        # This advances the Webots simulation by one basic timestep.
+        # `robot_controller` is an instance of OpenAIGymEnvironment, which is a Supervisor.
+        # `Supervisor.step(instance_of_supervisor, duration_of_step)`
+        if Supervisor.step(robot_controller, webots_timestep_duration) == -1:
+            print(f"Webots simulation terminated by an external event at step {i+1}.")
+            break
+        
+        # Optional: Print a message periodically
+        if (i + 1) % 50 == 0:
+            print(f"Webots simulation step {i + 1} / {simulation_run_steps} completed.")
+            # You could also get sensor readings here if needed for debugging:
+            # current_sensors = robot_controller._get_sensor_state()
+            # print(f"Current sensors: {current_sensors}")
+
+    print("Test movement duration finished.")
+
+    # 5. Stop the motors
+    print("Stopping motors...")
+    robot_controller.left_motor.setVelocity(0.0)
+    robot_controller.right_motor.setVelocity(0.0)
+    # Let the stop command process for a few steps
+    for _ in range(50):
+        if Supervisor.step(robot_controller, webots_timestep_duration) == -1:
+            break
+            
+    print("Robot stop command sent. test() finished.")
+    print("Please check the Webots window to see if the robot moved.")
+
 if __name__ == '__main__':
     main()
+    #test()
 

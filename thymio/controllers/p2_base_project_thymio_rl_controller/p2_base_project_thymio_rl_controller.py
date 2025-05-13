@@ -3,6 +3,16 @@
 #
 # Template to use SB3 to train a Thymio in Webots.
 #
+import tensorflow
+print("TensorFlow imported successfully")
+try:
+    import tensorboard
+    print("TensorBoard imported successfully")
+except ImportError as e:
+    print(f"Error importing TensorBoard: {e}")
+except AttributeError as e:
+    print(f"AttributeError related to TensorBoard/Protobuf: {e}")
+
 import sys
 
 import time
@@ -10,7 +20,7 @@ import gymnasium as gym
 import numpy as np
 import math
 from stable_baselines3.common.callbacks import CheckpointCallback
-from sb3_contrib import RecurrentPPO
+import stable_baselines3.common
 from controller import Supervisor
 
 #
