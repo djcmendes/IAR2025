@@ -138,7 +138,7 @@ class OpenAIGymEnvironment(Supervisor, gym.Env):
         actual_left_vel = float(np.clip(left_speed, -1, 1)) * MAX_SPEED
         actual_right_vel = float(np.clip(right_speed, -1, 1)) * MAX_SPEED
         
-        print(f"Step {self.__n}: Setting motor vels = [{actual_left_vel:.4f}, {actual_right_vel:.4f}]") # DEBUG
+        # print(f"Step {self.__n}: Setting motor vels = [{actual_left_vel:.4f}, {actual_right_vel:.4f}]") # DEBUG
         
         self.left_motor.setVelocity(actual_left_vel)
         self.right_motor.setVelocity(actual_right_vel)
