@@ -186,7 +186,7 @@ def main():
     env = OpenAIGymEnvironment(max_episode_steps=200)
     check_env(env)  # opcional: verifica erros comuns
 
-    model = PPO("MlpPolicy", env, verbose=1)
+    model = PPO("MlpPolicy", env, verbose=1, device="cuda")
     model.learn(total_timesteps=10000)  # ajustar conforme testes
     model.save("ppo_thymio")
 

@@ -12,7 +12,18 @@
     eachSystem = f:
       nixpkgs.lib.genAttrs (import systems) (
         system:
-          f nixpkgs.legacyPackages.${system}
+          let
+            # Configure pkgs for this specific system
+            pkgs = import nixpkgs {
+              inherit system;
+              config = {
+                allowUnfree = true; # <<< IMPORTANT for NVIDIA drivers/CUDA
+                cudaSupport = true; # <<< IMPORTANT for CUDA-enabled packages
+                # You might need to specify a cudaMajorVersion if default is not what you need
+                # cudaMajorVersion = "11"; # or "12" - check what your TF version expects
+              };
+            };
+          in f pkgs
       );
   in {
     devShells = eachSystem (pkgs: 
@@ -23,8 +34,9 @@
         packages = [
           pkgs.texlive.combined.scheme-full  # Full TeX Live installation
           #pkgs.jupyter-all
+          pkgs.cudaPackages.cudatoolkit
           (pkgs.python312.withPackages (python-pkgs: with python-pkgs; [
-            tensorflow
+            tensorflowWithCuda
             tensorboard
             protobuf
             pandas
