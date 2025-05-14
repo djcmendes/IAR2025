@@ -18,7 +18,7 @@
               inherit system;
               config = {
                 allowUnfree = true; # <<< IMPORTANT for NVIDIA drivers/CUDA
-                cudaSupport = true; # <<< IMPORTANT for CUDA-enabled packages
+                # cudaSupport = true; # <<< IMPORTANT for CUDA-enabled packages
                 # You might need to specify a cudaMajorVersion if default is not what you need
                 # cudaMajorVersion = "11"; # or "12" - check what your TF version expects
               };
@@ -36,7 +36,8 @@
           #pkgs.jupyter-all
           pkgs.cudaPackages.cudatoolkit
           (pkgs.python312.withPackages (python-pkgs: with python-pkgs; [
-            tensorflowWithCuda
+            # tensorflowWithCuda
+            tensorflow
             tensorboard
             protobuf
             pandas
