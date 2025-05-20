@@ -34,22 +34,23 @@
         packages = [
           pkgs.texlive.combined.scheme-full  # Full TeX Live installation
           #pkgs.jupyter-all
-          pkgs.cudaPackages.cudatoolkit
-          (pkgs.python312.withPackages (python-pkgs: with python-pkgs; [
-            # tensorflowWithCuda
-            tensorflow
-            tensorboard
-            protobuf
-            pandas
-            numpy
-            jupyter
-            matplotlib
-            sympy
-            virtualenv
-            gymnasium
-            stable-baselines3
-            #torch
-          ]))
+          # pkgs.cudaPackages.cudatoolkit
+          # (pkgs.python312.withPackages (python-pkgs: with python-pkgs; [
+          #   # tensorflowWithCuda
+          #   tensorflow
+          #   tensorboard
+          #   protobuf
+          #   pandas
+          #   numpy
+          #   jupyter
+          #   matplotlib
+          #   sympy
+          #   virtualenv
+          #   gymnasium
+          #   stable-baselines3
+          #   #torch
+          # ]))
+          pkgs.virtualenv
           # pkgs.steam-run
         ];
 
@@ -60,8 +61,11 @@
 
           # jupyter notebook
 
-          echo "TeX Live full environment is ready!"
-          echo "Build with \`latexmk --shell-escape -f -synctex=1 -interaction=nonstopmode -file-line-error -pdf ./main\`"
+          #echo "TeX Live full environment is ready!"
+          #echo "Build with \`latexmk --shell-escape -f -synctex=1 -interaction=nonstopmode -file-line-error -pdf ./main\`"
+
+          sh venvnix.sh 
+          source .venv/bin/activate
         '';
       };
     });

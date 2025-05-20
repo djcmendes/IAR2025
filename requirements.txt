@@ -1,0 +1,22 @@
+gymnasium
+numpy
+stable-baselines3
+sb3-contrib
+torch  # Dependency for sb3-contrib
+matplotlib
+
+#tensorflow
+#tensorboard
+#protobuf
+#pandas
+#numpy
+#sympy
+#gymnasium
+#stable-baselines3
+#sb3-contrib
+#torch
+# Optional: PyTorch is a core dependency for sb3-contrib
+# If you want to specify a version or CPU/CUDA variant:
+# torch # For CPU
+# torch --index-url https://download.pytorch.org/whl/cu118 # For CUDA 11.8 example
+# torch --index-url https://download.pytorch.org/whl/cu121 # For CUDA 12.1 example
