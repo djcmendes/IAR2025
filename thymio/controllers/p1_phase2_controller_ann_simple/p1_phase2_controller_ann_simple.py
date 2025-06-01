@@ -36,14 +36,14 @@ class SimpleANN:
 
 class ANNController:
     def __init__(self, supervisor=None, evaluation_time=300):
-        # Reuse Supervisor if fornecido, ou crie um
+        # Reuse Supervisor se fornecido, ou cria um
         self.supervisor = supervisor or Supervisor()
         self.robot_node = self.supervisor.getFromDef("ROBOT")
         self.translation_field = self.robot_node.getField("translation")
         self.rotation_field    = self.robot_node.getField("rotation")
         self.timestep = int(self.supervisor.getBasicTimeStep() * 5)
 
-        # Dispositivos devem vir do Supervisor único
+        # Dispositivos
         self.left_motor = self.supervisor.getDevice('motor.left')
         self.right_motor= self.supervisor.getDevice('motor.right')
         self.left_motor.setPosition(float('inf'))
@@ -96,74 +96,86 @@ class Evolution:
         self.mut_rate     = mutation_rate
         self.mut_scale    = mutation_scale
         self.genome_len   = 22
-        # Inicializa população com o genoma pré-definido em primeiro lugar
+
+        # Inicializa população com genoma padrão + aleatórios
         self.population = [default_genome.copy()]
         for _ in range(self.pop_size - 1):
-            self.population.append(
-                np.random.uniform(-1, 1, self.genome_len)
-            )
+            self.population.append(np.random.uniform(-1, 1, self.genome_len))
+
         self.fitnesses = np.zeros(self.pop_size)
-
         self.fitness_history = []
-
-    def select_parents(self):
-        parents = []
-        for _ in range(2):
-            i, j = random.sample(range(self.pop_size), 2)
-            parents.append(
-                self.population[i] if self.fitnesses[i] > self.fitnesses[j]
-                else self.population[j]
-            )
-        return parents
-
-    def crossover(self, p1, p2):
-        pt = random.randint(1, self.genome_len - 1)
-        return (
-            np.concatenate([p1[:pt], p2[pt:]]),
-            np.concatenate([p2[:pt], p1[pt:]])
-        )
 
     def mutate(self, genome):
         mask = np.random.rand(self.genome_len) < self.mut_rate
+        genome = genome.copy()
         genome[mask] += np.random.normal(0, self.mut_scale, mask.sum())
         return genome
 
-    def evolve(self):
-        with open("fitness_history_ann_simples.csv", mode="w", newline="") as file:  # <<< ADICIONADO
-            writer = csv.writer(file)  # <<< ADICIONADO
-            writer.writerow(["Generation", "Individual", "Fitness"])  # <<< ADICIONADO
+    def crossover(self, p1, p2):
+        # Crossover de um ponto simples
+        pt = random.randint(1, self.genome_len - 1)
+        child1 = np.concatenate([p1[:pt], p2[pt:]])
+        child2 = np.concatenate([p2[:pt], p1[pt:]])
+        return child1, child2
 
-        for gen in range(self.generations):
-            print(f"=== Geração {gen+1}/{self.generations} ===")
-            for i, genome in enumerate(self.population):
-                fit = self.controller.run(genome)
-                self.fitnesses[i] = fit
-                print(f"Ind {i+1}: fitness={fit:.3f}")
-                writer.writerow([gen + 1, i + 1, fit])  # <<< ADICIONADO
-                self.fitness_history.append((gen + 1, i + 1, fit))  # <<< ADICIONADO
-            idx = np.argsort(-self.fitnesses)
-            self.population = [self.population[i] for i in idx]
-            self.fitnesses  = self.fitnesses[idx]
-            # Elitismo + recombinação
-            new_pop = self.population[:2].copy()
-            while len(new_pop) < self.pop_size:
-                p1, p2 = self.select_parents()
-                c1, c2 = self.crossover(p1, p2)
-                new_pop += [self.mutate(c1), self.mutate(c2)]
-            self.population = new_pop[:self.pop_size]
-        best = self.population[0]
-        print(f"Melhor genoma fitness={self.fitnesses[0]:.3f}")
-        return best
+    def tournament_selection(self, k=3):
+        # Seleção por torneio: escolhe k indivíduos aleatórios e retorna o melhor
+        participants = random.sample(range(self.pop_size), k)
+        best = participants[0]
+        for p in participants[1:]:
+            if self.fitnesses[p] > self.fitnesses[best]:
+                best = p
+        return self.population[best]
+
+    def evolve(self):
+        with open("fitness_history_ann_simples.csv", mode="w", newline="") as file:
+            writer = csv.writer(file)
+            writer.writerow(["Generation", "Individual", "Fitness"])
+
+            for gen in range(self.generations):
+                print(f"=== Geração {gen+1}/{self.generations} ===")
+
+                # Avaliar população
+                for i, genome in enumerate(self.population):
+                    fit = self.controller.run(genome)
+                    self.fitnesses[i] = fit
+                    print(f"Ind {i+1}: fitness={fit:.3f}")
+                    writer.writerow([gen + 1, i + 1, fit])
+                    self.fitness_history.append((gen + 1, i + 1, fit))
+
+                # Ordenar população pela fitness (descendente)
+                idx = np.argsort(-self.fitnesses)
+                self.population = [self.population[i] for i in idx]
+                self.fitnesses  = self.fitnesses[idx]
+
+                print(f"Melhor fitness geração {gen+1}: {self.fitnesses[0]:.3f}")
+
+                # Mantém elitismo dos 2 melhores
+                new_pop = [self.population[0].copy(), self.population[1].copy()]
+
+                # Preenche o resto da população com filhos gerados por crossover e mutação
+                while len(new_pop) < self.pop_size:
+                    parent1 = self.tournament_selection()
+                    parent2 = self.tournament_selection()
+                    child1, child2 = self.crossover(parent1, parent2)
+                    new_pop.append(self.mutate(child1))
+                    if len(new_pop) < self.pop_size:
+                        new_pop.append(self.mutate(child2))
+
+                self.population = new_pop
+
+            best_genome = self.population[0]
+            print(f"\nMelhor genoma final com fitness={self.fitnesses[0]:.3f}")
+            return best_genome
+
 
 if __name__ == "__main__":
-    # Cria um único Supervisor e ANNController
     supervisor = Supervisor()
     controller = ANNController(supervisor=supervisor, evaluation_time=80)
 
-    # Evolução usando o mesmo controller
     evo = Evolution(controller, pop_size=10, generations=30,
                     mutation_rate=0.2, mutation_scale=0.05)
     best_genome = evo.evolve()
 
-    # Avaliação final sem recriar Supervisor
+    # Avaliação final sem reiniciar supervisor
     controller.run(best_genome)
