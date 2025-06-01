@@ -1,6 +1,8 @@
 import numpy as np
 from controller import Supervisor
 import random
+import csv
+
 
 # Genoma inicial pré-definido (melhor comportamento conhecido)
 default_genome = np.array([
@@ -102,6 +104,8 @@ class Evolution:
             )
         self.fitnesses = np.zeros(self.pop_size)
 
+        self.fitness_history = []
+
     def select_parents(self):
         parents = []
         for _ in range(2):
@@ -125,12 +129,18 @@ class Evolution:
         return genome
 
     def evolve(self):
+        with open("fitness_history_ann_simples.csv", mode="w", newline="") as file:  # <<< ADICIONADO
+            writer = csv.writer(file)  # <<< ADICIONADO
+            writer.writerow(["Generation", "Individual", "Fitness"])  # <<< ADICIONADO
+
         for gen in range(self.generations):
             print(f"=== Geração {gen+1}/{self.generations} ===")
             for i, genome in enumerate(self.population):
                 fit = self.controller.run(genome)
                 self.fitnesses[i] = fit
                 print(f"Ind {i+1}: fitness={fit:.3f}")
+                writer.writerow([gen + 1, i + 1, fit])  # <<< ADICIONADO
+                self.fitness_history.append((gen + 1, i + 1, fit))  # <<< ADICIONADO
             idx = np.argsort(-self.fitnesses)
             self.population = [self.population[i] for i in idx]
             self.fitnesses  = self.fitnesses[idx]

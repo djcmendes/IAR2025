@@ -1,6 +1,8 @@
 import numpy as np
 from controller import Supervisor
 import random
+import csv
+
 
 # Genoma inicial pré-definido (melhor comportamento conhecido)
 default_genome = np.array([
@@ -88,6 +90,7 @@ class Evolution:
         self, controller, pop_size=20, generations=50,
         mutation_rate=0.2, mutation_scale=0.1
     ):
+        self.fitness_history = []
         self.controller   = controller
         self.pop_size     = pop_size
         self.generations  = generations
@@ -101,6 +104,8 @@ class Evolution:
                 np.random.uniform(-1, 1, self.genome_len)
             )
         self.fitnesses = np.zeros(self.pop_size)
+        
+
 
     def select_parents(self):
         parents = []
@@ -127,13 +132,18 @@ class Evolution:
     def evolve(self):
         for gen in range(self.generations):
             print(f"=== Geração {gen+1}/{self.generations} ===")
+            generation_fitnesses = []  # fitness desta geração
             for i, genome in enumerate(self.population):
                 fit = self.controller.run(genome)
                 self.fitnesses[i] = fit
+                generation_fitnesses.append(fit)
                 print(f"Ind {i+1}: fitness={fit:.3f}")
+            self.fitness_history.append(generation_fitnesses)
+
             idx = np.argsort(-self.fitnesses)
             self.population = [self.population[i] for i in idx]
             self.fitnesses  = self.fitnesses[idx]
+
             # Elitismo + recombinação
             new_pop = self.population[:2].copy()
             while len(new_pop) < self.pop_size:
@@ -141,6 +151,14 @@ class Evolution:
                 c1, c2 = self.crossover(p1, p2)
                 new_pop += [self.mutate(c1), self.mutate(c2)]
             self.population = new_pop[:self.pop_size]
+
+        # Gravar o histórico de fitness em CSV
+        with open('fitness_history_ann_advanced.csv', mode='w', newline='') as file:
+            writer = csv.writer(file)
+            writer.writerow(['Generation'] + [f'Ind_{i+1}' for i in range(self.pop_size)])
+            for gen_idx, fits in enumerate(self.fitness_history):
+                writer.writerow([gen_idx + 1] + fits)
+
         best = self.population[0]
         print(f"Melhor genoma fitness={self.fitnesses[0]:.3f}")
         return best

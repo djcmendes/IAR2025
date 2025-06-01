@@ -2,6 +2,7 @@ import numpy as np
 from controller import Supervisor
 import random
 import math
+import csv
 
 # Simulation parameters
 TIME_STEP = 64
@@ -31,6 +32,7 @@ def random_position(min_radius, max_radius, z):
 
 class Evolution:
     def __init__(self):
+        self.fitness_history = []
         self.evaluation_start_time = 0
         self.collision = False
 
@@ -78,6 +80,8 @@ class Evolution:
         
         self.population = [{'weights': np.random.uniform(0, 1, 6), 'fitness': 0}
                    for _ in range(POPULATION_SIZE)]
+        
+
         
 
     def reset(self, seed=None, options=None):
@@ -162,6 +166,8 @@ class Evolution:
                 i['fitness'] = self.time_in_line / EVALUATION_TIME
                 print(f"Indivíduo: {k} {i['weights']} Fitness: {i['fitness']}")
             parents = self.select_parents()
+            average_fitness = sum(i['fitness'] for i in self.population) / POPULATION_SIZE
+            self.fitness_history.append(average_fitness)
 
             # Nova geração com pais + filhos
             new_population = parents.copy()
@@ -173,6 +179,12 @@ class Evolution:
                 new_population.extend([c1, c2])
 
             self.population = new_population[:POPULATION_SIZE]
+
+            with open("fitness_history_Braitenberg.csv", "w", newline="") as csvfile:
+                writer = csv.writer(csvfile)
+                writer.writerow(["Generation", "AverageFitness"])
+                for i, fitness in enumerate(self.fitness_history):
+                    writer.writerow([i + 1, fitness])
 
 
 # Main evolutionary loop
