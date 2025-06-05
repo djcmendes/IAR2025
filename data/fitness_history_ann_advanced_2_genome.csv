@@ -1,0 +1,4 @@
+Generation,Individual,Fitness,Score_Color_Line,Score_Proximity_Collisions,Score_Distance_Area,Collisions,genome
+1,1,0,0.0,0.9998333333333334,0.017611111111111112,1,"[ 1.  -0.8  0.5 -0.5 -0.8  1.  -0.5  0.5  0.5 -1.   0.5 -1.   1.  -0.5
+  1.  -0.5 -1.   0.5 -1.   0.5  0.1 -0.1  0.2 -0.2  0.8 -0.5 -0.5  0.8
+  0.3 -0.3 -0.3  0.3  0.1  0.1]"
