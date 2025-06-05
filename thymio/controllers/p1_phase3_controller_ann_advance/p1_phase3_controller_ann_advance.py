@@ -93,15 +93,9 @@ class ANNController:
         self.right_motor.setVelocity(0)
         self.time_in_line = 0
 
-        block_names = [
-            "MOVING_BLOCK_1", "MOVING_BLOCK_2",
-            "MOVING_BLOCK_3", "MOVING_BLOCK_4",
-            "STATIC_BLOCK_1", "STATIC_BLOCK_2"
-        ]
-        blocks = [self.supervisor.getFromDef(name) for name in block_names]
-        for block in blocks:
-            if block is not None:
-                block.getField("customData").setSFString("reset")
+        # Gerar obstáculos aleatórios — usa o código do Lab 1 aqui (a ser implementado por ti)
+        self._randomize_obstacles()
+
 
     def set_weights(self, weights=None):
         if weights is None:
@@ -247,12 +241,77 @@ class ANNController:
 
             total_steps += 1
 
-
         max_distance = max_speed * self.EVALUATION_TIME
         fitness_score, score_color, score_proximity, score_area = self.fitness(total_steps, time_without_collision, count_colisions, total_distance, max_distance)
 
         return (fitness_score, score_color, score_proximity, score_area, count_colisions)
 
+    def _randomize_obstacles(self):
+        # Aceder ao campo children da raiz da cena
+        root = self.supervisor.getRoot()
+        children_field = root.getField("children")
+
+        # Eliminar caixas anteriores (limpeza opcional)
+        for i in range(children_field.getCount()):
+            node = children_field.getMFNode(i)
+            if node.getDef() and node.getDef().startswith("WHITE_BOX_"):
+                children_field.removeMF(i)
+                break  # necessário reiniciar contagem se remove (ver abaixo)
+
+        # Gerar novos obstáculos
+        def random_orientation():
+            angle = self.np_random.uniform(0, 2 * np.pi)
+            return (0, 1, 0, angle)  # rotação no eixo Y
+
+        def random_position_on_H(exclusion_radius=0.2):
+            while True:
+                # Gerar nas pernas do H (laterais) e nas travessas (topo/baixo)
+                x = self.np_random.choice([
+                    self.np_random.uniform(-0.3, -0.2),  # perna esquerda
+                    self.np_random.uniform(0.2, 0.3),    # perna direita
+                ])
+                y = self.np_random.choice([
+                    self.np_random.uniform(-0.5, -0.3),  # parte inferior do H
+                    self.np_random.uniform(0.3, 0.5),    # parte superior do H
+                ])
+                # Evita gerar no centro
+                if np.sqrt(x**2 + y**2) > exclusion_radius:
+                    return x, y, 1.01  # z fixo (altura do obstáculo)
+
+
+
+        for i in range(5):
+            position = random_position_on_H()
+            orientation = random_orientation()
+            length = self.np_random.uniform(0.05, 0.2)
+            width = self.np_random.uniform(0.05, 0.2)
+
+            box_string = f"""
+            DEF WHITE_BOX_{i} Solid {{
+            translation {position[0]} {position[1]} {position[2]}
+            rotation {orientation[0]} {orientation[1]} {orientation[2]} {orientation[3]}
+            physics Physics {{
+                density 1000.0
+            }}
+            children [
+                Shape {{
+                appearance Appearance {{
+                    material Material {{
+                    diffuseColor 1 1 1
+                    }}
+                }}
+                geometry Box {{
+                    size {length} {width} 0.2
+                }}
+                }}
+            ]
+            boundingObject Box {{
+                size {length} {width} 0.2
+            }}
+            }}
+            """
+
+            children_field.importMFNodeFromString(-1, box_string)
 
 class Evolution:
     def __init__(
@@ -315,7 +374,7 @@ class Evolution:
 
         with open(file_name, mode="w", newline="") as file:
             writer = csv.writer(file)
-            writer.writerow(["Generation", "Individual", "Fitness", "Score_Color_Line", "Score_Proximity_Collisions", "Score_Distance_Area", "Collisions"])
+            writer.writerow(["Generation", "Individual", "Fitness", "Score_Color_Line", "Score_Proximity_Collisions", "Score_Distance_Area", "Collisions", "genome"])
 
             for gen in range(self.generations):
                 print(f"=== Geração {gen+1}/{self.generations} ===")
@@ -326,7 +385,7 @@ class Evolution:
                     print(f"Ind {i+1}: fitness={fit:.3f}")
 
                     writer.writerow([gen + 1, i + 1, fit, color, proximity, area, collision])  # guardar resultados no ficheiro
-                    self.fitness_history.append((gen + 1, i + 1, fit, color, proximity, area, collision))  # <<< ADICIONADO
+                    self.fitness_history.append((gen + 1, i + 1, fit, color, proximity, area, collision, genome))  #
 
                 idx = np.argsort(-self.fitnesses)
                 self.population = [self.population[i] for i in idx]
@@ -355,11 +414,11 @@ class Evolution:
 
         with open(file_name, mode="w", newline="") as file:
             writer = csv.writer(file)
-            writer.writerow(["Generation", "Individual", "Fitness", "Score_Color_Line", "Score_Proximity_Collisions", "Score_Distance_Area", "Collisions"])
+            writer.writerow(["Generation", "Individual", "Fitness", "Score_Color_Line", "Score_Proximity_Collisions", "Score_Distance_Area", "Collisions", "genome"])
 
             fit, color, proximity, area, collision  = self.controller.run(genome)
 
-            writer.writerow([1, 1, fit, color, proximity, area, collision])
+            writer.writerow([1, 1, fit, color, proximity, area, collision, genome])
             print(f"Fitness={fit:.3f}")
             print(f"Score black line={color:.3f}")
             print(f"Score time without collisions={proximity:.3f}")
@@ -389,7 +448,7 @@ if __name__ == "__main__":
     controller.set_test_name(1)
 
     # Evolução usando o mesmo controller
-    evo = Evolution(controller, pop_size=10, generations=300, mutation_rate=0.2, mutation_scale=0.05)
+    evo = Evolution(controller, pop_size=10, generations=1, mutation_rate=0.2, mutation_scale=0.05)
     best_genome = evo.evolve()
 
     print("best_genome", best_genome)
@@ -412,7 +471,7 @@ if __name__ == "__main__":
     controller.set_test_name(2)
 
     # Evolução usando o mesmo controller
-    evo = Evolution(controller, pop_size=10, generations=300, mutation_rate=0.2, mutation_scale=0.05)
+    evo = Evolution(controller, pop_size=10, generations=1, mutation_rate=0.2, mutation_scale=0.05)
     best_genome = evo.evolve()
 
     # Avaliação final sem recriar Supervisor
@@ -436,7 +495,7 @@ if __name__ == "__main__":
     controller.set_test_name(3)
 
     # Evolução usando o mesmo controller
-    evo = Evolution(controller, pop_size=10, generations=300, mutation_rate=0.2, mutation_scale=0.05)
+    evo = Evolution(controller, pop_size=10, generations=1, mutation_rate=0.2, mutation_scale=0.05)
     best_genome = evo.evolve()
 
     # Avaliação final sem recriar Supervisor
