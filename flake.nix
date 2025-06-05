@@ -32,7 +32,7 @@
     in {
       default = pkgs.mkShell {
         packages = [
-          pkgs.texlive.combined.scheme-full  # Full TeX Live installation
+          #pkgs.texlive.combined.scheme-full  # Full TeX Live installation
           #pkgs.jupyter-all
           # pkgs.cudaPackages.cudatoolkit
           # (pkgs.python312.withPackages (python-pkgs: with python-pkgs; [
@@ -64,8 +64,8 @@
           #echo "TeX Live full environment is ready!"
           #echo "Build with \`latexmk --shell-escape -f -synctex=1 -interaction=nonstopmode -file-line-error -pdf ./main\`"
 
-          sh venvnix.sh 
-          source .venv/bin/activate
+          #sh venvnix.sh 
+          #source .venv/bin/activate
         '';
       };
     });

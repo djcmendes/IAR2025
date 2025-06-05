@@ -14,6 +14,9 @@ echo "Loading direnv environment..."
 direnv allow .
 eval "$(direnv export bash)"
 
+VENV_DIR="$(pwd)/.venv"
+source "$VENV_DIR/bin/activate"
+
 # Create virtual environment
 # VENV_DIR="$(pwd)/.venv"
 #if [ ! -d "$VENV_DIR" ]; then
