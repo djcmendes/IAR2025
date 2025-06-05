@@ -142,7 +142,6 @@ class OpenAIGymEnvironment(Supervisor, gym.Env):
 
         return reward
 
-
     def _check_termination(self, obs):
         ground_reading = np.mean(obs[5:])
         return ground_reading < 0.1  # ou ajusta conforme o sensor
@@ -213,7 +212,6 @@ class OpenAIGymEnvironment(Supervisor, gym.Env):
             """
 
             children_field.importMFNodeFromString(-1, box_string)
-
 
     #
     # Reset the environment to an initial internal state, returning an initial observation and info.

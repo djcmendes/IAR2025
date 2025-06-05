@@ -93,15 +93,9 @@ class ANNController:
         self.right_motor.setVelocity(0)
         self.time_in_line = 0
 
-        block_names = [
-            "MOVING_BLOCK_1", "MOVING_BLOCK_2",
-            "MOVING_BLOCK_3", "MOVING_BLOCK_4",
-            "STATIC_BLOCK_1", "STATIC_BLOCK_2"
-        ]
-        blocks = [self.supervisor.getFromDef(name) for name in block_names]
-        for block in blocks:
-            if block is not None:
-                block.getField("customData").setSFString("reset")
+        # Gerar obstáculos aleatórios — usa o código do Lab 1 aqui (a ser implementado por ti)
+        self._randomize_obstacles()
+
 
     def set_weights(self, weights=None):
         if weights is None:
@@ -241,18 +235,101 @@ class ANNController:
 
             # Calculate Euclidean distance in the XZ plane
             step_distance = ((x - px) ** 2 + (z - pz) ** 2) ** 0.5
-            total_distance += step_distance
+            total_distance += self.exploration_bonus()
 
             prev_position = position # Update for next step
 
             total_steps += 1
 
-
-        max_distance = max_speed * self.EVALUATION_TIME
+        max_distance = round((max_speed * self.EVALUATION_TIME) / 0.1)
         fitness_score, score_color, score_proximity, score_area = self.fitness(total_steps, time_without_collision, count_colisions, total_distance, max_distance)
 
         return (fitness_score, score_color, score_proximity, score_area, count_colisions)
 
+    def exploration_bonus(self):
+        pos = self.robot_node.getField("translation").getSFVec3f()
+        x, y = pos[0], pos[1]
+
+        # Arredonda posição para "células de uma grelha virtual"
+        grid_x = round(x / 0.1)
+        grid_y = round(y / 0.1)
+
+        key = (grid_x, grid_y)
+
+        if not hasattr(self, "prev_visited_zones"):
+            self.prev_visited_zones = set()
+
+        if key not in self.prev_visited_zones:
+            self.prev_visited_zones.clear() # remove all previous zones
+            self.prev_visited_zones.add(key)
+            return 1.0  # recompensa por nova zona
+        else:
+            return 0.0
+
+    def _randomize_obstacles(self):
+        # Aceder ao campo children da raiz da cena
+        root = self.supervisor.getRoot()
+        children_field = root.getField("children")
+        # Eliminar caixas anteriores (limpeza opcional)
+        for i in reversed(range(children_field.getCount())):
+            node = children_field.getMFNode(i)
+            if hasattr(node, 'getDef') and node.getDef() and node.getDef().startswith("WHITE_BOX_"):
+                children_field.removeMF(i)
+
+        # Gerar novos obstáculos
+        def random_orientation():
+            angle = np.random.uniform(0, 2 * np.pi)
+            return (0, 1, 0, angle)  # rotação no eixo Y
+
+        def random_position_on_H(exclusion_radius=0.2):
+            while True:
+                # Gerar nas pernas do H (laterais) e nas travessas (topo/baixo)
+                x = np.random.choice([
+                    np.random.uniform(-0.3, -0.2),  # perna esquerda
+                    np.random.uniform(0.2, 0.3),    # perna direita
+                ])
+                y = np.random.choice([
+                    np.random.uniform(-0.5, -0.3),  # parte inferior do H
+                    np.random.uniform(0.3, 0.5),    # parte superior do H
+                ])
+                # Evita gerar no centro
+                if np.sqrt(x**2 + y**2) > exclusion_radius:
+                    return x, y, 1.01  # z fixo (altura do obstáculo)
+
+
+
+        for i in range(5):
+            position = random_position_on_H()
+            orientation = random_orientation()
+            length = np.random.uniform(0.05, 0.2)
+            width = np.random.uniform(0.05, 0.2)
+
+            box_string = f"""
+            DEF WHITE_BOX_{i} Solid {{
+            translation {position[0]} {position[1]} {position[2]}
+            rotation {orientation[0]} {orientation[1]} {orientation[2]} {orientation[3]}
+            physics Physics {{
+                density 1000.0
+            }}
+            children [
+                Shape {{
+                appearance Appearance {{
+                    material Material {{
+                    diffuseColor 1 1 1
+                    }}
+                }}
+                geometry Box {{
+                    size {length} {width} 0.2
+                }}
+                }}
+            ]
+            boundingObject Box {{
+                size {length} {width} 0.2
+            }}
+            }}
+            """
+
+            children_field.importMFNodeFromString(-1, box_string)
 
 class Evolution:
     def __init__(
@@ -315,7 +392,7 @@ class Evolution:
 
         with open(file_name, mode="w", newline="") as file:
             writer = csv.writer(file)
-            writer.writerow(["Generation", "Individual", "Fitness", "Score_Color_Line", "Score_Proximity_Collisions", "Score_Distance_Area", "Collisions"])
+            writer.writerow(["Generation", "Individual", "Fitness", "Score_Color_Line", "Score_Proximity_Collisions", "Score_Distance_Area", "Collisions", "genome"])
 
             for gen in range(self.generations):
                 print(f"=== Geração {gen+1}/{self.generations} ===")
@@ -325,8 +402,8 @@ class Evolution:
                     self.fitnesses[i] = fit
                     print(f"Ind {i+1}: fitness={fit:.3f}")
 
-                    writer.writerow([gen + 1, i + 1, fit, color, proximity, area, collision])  # guardar resultados no ficheiro
-                    self.fitness_history.append((gen + 1, i + 1, fit, color, proximity, area, collision))  # <<< ADICIONADO
+                    writer.writerow([gen + 1, i + 1, fit, color, proximity, area, collision, genome])  # guardar resultados no ficheiro
+                    self.fitness_history.append((gen + 1, i + 1, fit, color, proximity, area, collision, genome))  #
 
                 idx = np.argsort(-self.fitnesses)
                 self.population = [self.population[i] for i in idx]
@@ -355,11 +432,11 @@ class Evolution:
 
         with open(file_name, mode="w", newline="") as file:
             writer = csv.writer(file)
-            writer.writerow(["Generation", "Individual", "Fitness", "Score_Color_Line", "Score_Proximity_Collisions", "Score_Distance_Area", "Collisions"])
+            writer.writerow(["Generation", "Individual", "Fitness", "Score_Color_Line", "Score_Proximity_Collisions", "Score_Distance_Area", "Collisions", "genome"])
 
             fit, color, proximity, area, collision  = self.controller.run(genome)
 
-            writer.writerow([1, 1, fit, color, proximity, area, collision])
+            writer.writerow([1, 1, fit, color, proximity, area, collision, genome])
             print(f"Fitness={fit:.3f}")
             print(f"Score black line={color:.3f}")
             print(f"Score time without collisions={proximity:.3f}")
