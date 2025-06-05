@@ -1,181 +1,290 @@
 import numpy as np
 from controller import Supervisor
 import random
+import math
 import csv
+import os
 
+# Simulation parameters
+TIME_STEP = 64
+POPULATION_SIZE = 10
+PARENTS_KEEP = 3
+INPUT = 2
+HIDDEN = 4
+OUTPUT = 2
+GENOME_SIZE = (INPUT * HIDDEN) + HIDDEN + (HIDDEN * OUTPUT) + OUTPUT
+GENERATIONS = 300
+MUTATION_RATE = 0.2
+MUTATION_SIZE = 0.05
+EVALUATION_TIME = 300  # Simulated seconds per individual
+MAX_SPEED = 9.0
+BASE_SPEED = 1.0  # Minimal always-forward motion
+SENSOR_THRESHOLD = 0.66  # Threshold for detecting black line
 
-# Genoma inicial pré-definido (melhor comportamento conhecido)
-default_genome = np.array([
-    # W1 (2x4) - Pesos da camada de entrada para escondida
-    1.0, -0.8, 0.5, -0.5,  # Sensor esquerdo
-    -0.8, 1.0, -0.5, 0.5,  # Sensor direito
-    # b1 (4) - Bias da camada escondida
-    0.1, -0.1, 0.2, -0.2,
-    # W2 (4x2) - Pesos da camada escondida para saída
-    0.8, -0.5,  # Neurônio 1 -> Motores
-    -0.5, 0.8,  # Neurônio 2 -> Motores
-    0.3, -0.3,  # Neurônio 3 -> Motores
-    -0.3, 0.3,  # Neurônio 4 -> Motores
-    # b2 (2) - Bias da camada de saída
-    0.1, 0.1   # Pequeno bias para manter movimento para frente
-], dtype=float)
+def random_orientation():
+    angle = np.random.uniform(0, 2 * np.pi)
+    return (0, 0, 1, angle)
 
-# Rede neuronal com 2 entradas, 1 camada escondida (4 neurónios), 2 saídas
-class SimpleANN:
-    def __init__(self, genome):
-        i = 0
-        self.W1 = genome[i:i+8].reshape((2, 4)); i += 8
-        self.b1 = genome[i:i+4];           i += 4
-        self.W2 = genome[i:i+8].reshape((4, 2)); i += 8
-        self.b2 = genome[i:i+2]
-
-    def forward(self, inputs):
-        h = np.tanh(np.dot(inputs, self.W1) + self.b1)
-        output = np.tanh(np.dot(h, self.W2) + self.b2)
-        return output
-
-class ANNController:
-    def __init__(self, supervisor=None, evaluation_time=300):
-        # Reuse Supervisor se fornecido, ou cria um
-        self.supervisor = supervisor or Supervisor()
-        self.robot_node = self.supervisor.getFromDef("ROBOT")
-        self.translation_field = self.robot_node.getField("translation")
-        self.rotation_field    = self.robot_node.getField("rotation")
-        self.timestep = int(self.supervisor.getBasicTimeStep() * 5)
-
-        # Dispositivos
-        self.left_motor = self.supervisor.getDevice('motor.left')
-        self.right_motor= self.supervisor.getDevice('motor.right')
-        self.left_motor.setPosition(float('inf'))
-        self.right_motor.setPosition(float('inf'))
-        self.ground_sensors = [
-            self.supervisor.getDevice(f'prox.ground.{i}') for i in range(2)
-        ]
-        for s in self.ground_sensors:
-            s.enable(self.timestep)
-
-        self.EVALUATION_TIME = evaluation_time
-        self.time_in_line    = 0
-
-    def reset(self):
-        self.rotation_field.setSFRotation([0,0,1, np.random.uniform(0,2*np.pi)])
-        self.translation_field.setSFVec3f([0,0,0])
-        self.left_motor.setVelocity(0)
-        self.right_motor.setVelocity(0)
-        self.time_in_line = 0
-
-    def normalize(self, value):
-        white, black = 1000.0, 500.0
-        return max(0.0, min(1.0, (white - value)/(white - black)))
-
-    def run(self, genome):
-        self.reset()
-        ann = SimpleANN(genome)
-        start_time = self.supervisor.getTime()
-        while self.supervisor.getTime() - start_time < self.EVALUATION_TIME:
-            s = [self.normalize(sen.getValue()) for sen in self.ground_sensors]
-            if s[0] > 0.65 or s[1] > 0.65:
-                self.time_in_line += 1
-            speeds = ann.forward(np.array(s)) * 6.0
-            base = 3.0
-            left  = max(0, min(6, base + speeds[0]*2))
-            right = max(0, min(6, base + speeds[1]*2))
-            self.left_motor.setVelocity(left)
-            self.right_motor.setVelocity(right)
-            self.supervisor.step(self.timestep)
-        return self.time_in_line / self.EVALUATION_TIME
+def random_position(min_radius, max_radius, z):
+    radius = np.random.uniform(min_radius, max_radius)
+    angle = random_orientation()
+    x = radius * np.cos(angle[3])
+    y = radius * np.sin(angle[3])
+    return [x, y, z]
 
 class Evolution:
-    def __init__(
-        self, controller, pop_size=20, generations=50,
-        mutation_rate=0.2, mutation_scale=0.1
-    ):
-        self.controller   = controller
-        self.pop_size     = pop_size
-        self.generations  = generations
-        self.mut_rate     = mutation_rate
-        self.mut_scale    = mutation_scale
-        self.genome_len   = 22
-
-        # Inicializa população com genoma padrão + aleatórios
-        self.population = [default_genome.copy()]
-        for _ in range(self.pop_size - 1):
-            self.population.append(np.random.uniform(-1, 1, self.genome_len))
-
-        self.fitnesses = np.zeros(self.pop_size)
+    def __init__(self):
         self.fitness_history = []
+        self.evaluation_start_time = 0
+        self.collision = False
+        self.step_count = 0
+        self.time_in_line = 0
 
-    def mutate(self, genome):
-        mask = np.random.rand(self.genome_len) < self.mut_rate
-        genome = genome.copy()
-        genome[mask] += np.random.normal(0, self.mut_scale, mask.sum())
-        return genome
+        # Supervisor to reset robot position
+        self.supervisor = Supervisor()
+        self.robot = self.supervisor.getSelf()
+   
+        self.robot_node = self.supervisor.getFromDef("ROBOT") 
+        self.translation_field = self.robot_node.getField("translation")
+        self.rotation_field = self.robot_node.getField("rotation")
 
-    def crossover(self, p1, p2):
-        # Crossover de um ponto simples
-        pt = random.randint(1, self.genome_len - 1)
-        child1 = np.concatenate([p1[:pt], p2[pt:]])
-        child2 = np.concatenate([p2[:pt], p1[pt:]])
+        self.timestep = int(self.supervisor.getBasicTimeStep() * TIME_STEP)
+        self.left_motor = self.supervisor.getDevice('motor.left')
+        self.right_motor = self.supervisor.getDevice('motor.right')
+
+        self.__ir_0 = self.supervisor.getDevice('prox.horizontal.0')
+        self.__ir_1 = self.supervisor.getDevice('prox.horizontal.1')
+        self.__ir_2 = self.supervisor.getDevice('prox.horizontal.2')
+        self.__ir_3 = self.supervisor.getDevice('prox.horizontal.3')
+        self.__ir_4 = self.supervisor.getDevice('prox.horizontal.4')
+        self.__ir_5 = self.supervisor.getDevice('prox.horizontal.5')
+        self.__ir_6 = self.supervisor.getDevice('prox.horizontal.6')
+        self.__ir_7 = self.supervisor.getDevice('prox.ground.0')
+        self.__ir_8 = self.supervisor.getDevice('prox.ground.1')
+
+        self.left_motor.setPosition(float('inf'))
+        self.right_motor.setPosition(float('inf'))
+
+        self.__ir_0.enable(self.timestep)
+        self.__ir_1.enable(self.timestep)
+        self.__ir_2.enable(self.timestep)
+        self.__ir_3.enable(self.timestep)
+        self.__ir_4.enable(self.timestep)
+        self.__ir_5.enable(self.timestep)
+        self.__ir_6.enable(self.timestep)
+        self.__ir_7.enable(self.timestep)
+        self.__ir_8.enable(self.timestep)
+
+        self.ground_sensors = [self.supervisor.getDevice(f'prox.ground.{i}') for i in range(2)]
+        
+        # Ask user for training mode
+        # mode = input("Start new training (n) or load from file (l)? ").lower()
+        # if mode == 'l':
+        #     filename = input("Enter filename to load (without extension): ") + ".npz"
+        #     try:
+        #         data = np.load(filename)
+        #         genomes = data['genomes']
+        #         fitnesses = data['fitnesses']
+        #         self.fitness_history = list(data['fitness_history'])
+        #         self.population = [{'genome': genome, 'fitness': fitness} 
+        #                           for genome, fitness in zip(genomes, fitnesses)]
+        #         print(f"Loaded population from {filename}")
+        #         print(f"Resuming from generation {len(self.fitness_history)}")
+        #     except Exception as e:
+        #         print(f"Error loading file: {e}. Starting new population.")
+        #         self.population = [{'genome': np.random.uniform(-1, 1, GENOME_SIZE), 'fitness': 0}
+        #                    for _ in range(POPULATION_SIZE)]
+        # else:
+        self.population = [{'genome': np.random.uniform(-1, 1, GENOME_SIZE), 'fitness': 0}
+                    for _ in range(POPULATION_SIZE)]
+        
+    def reset(self):
+        self.time_in_line = 0
+        self.step_count = 0
+        self.collision = False
+        
+        random_rotation = [0, 0, 1, np.random.uniform(0, 2 * np.pi)]
+        self.robot_node.getField('rotation').setSFRotation(random_rotation)
+        pos = random_position(-1, 1, 0.1)
+        self.robot_node.getField('translation').setSFVec3f(pos)
+        
+        self.left_motor.setVelocity(0)
+        self.right_motor.setVelocity(0)
+        self.supervisor.step(self.timestep)
+        
+    def select_parents(self):
+        sorted_population = sorted(self.population, key=lambda x: x['fitness'], reverse=True)
+        parents = sorted_population[:PARENTS_KEEP]
+        return parents
+
+    def crossover(self, parent1, parent2):
+        point = random.randint(1, len(parent1) - 1)
+        child1 = np.concatenate([parent1[:point], parent2[point:]])
+        child2 = np.concatenate([parent2[:point], parent1[point:]])
         return child1, child2
 
-    def tournament_selection(self, k=3):
-        # Seleção por torneio: escolhe k indivíduos aleatórios e retorna o melhor
-        participants = random.sample(range(self.pop_size), k)
-        best = participants[0]
-        for p in participants[1:]:
-            if self.fitnesses[p] > self.fitnesses[best]:
-                best = p
-        return self.population[best]
+    def mutate(self, genome):
+        for i in range(len(genome)):
+            if random.random() < MUTATION_RATE:
+                genome[i] += np.random.normal(0, MUTATION_SIZE)
+        return genome
 
-    def evolve(self):
-        with open("fitness_history_ann_simples.csv", mode="w", newline="") as file:
-            writer = csv.writer(file)
-            writer.writerow(["Generation", "Individual", "Fitness"])
+    def decode_genome(self, genome):
+        idx = 0
+        
+        # Input to hidden weights (2x4)
+        W1 = np.array(genome[idx:idx+INPUT*HIDDEN]).reshape(INPUT, HIDDEN)
+        idx += INPUT*HIDDEN
+        
+        # Hidden biases (4)
+        b1 = np.array(genome[idx:idx+HIDDEN])
+        idx += HIDDEN
+        
+        # Hidden to output weights (4x2)
+        W2 = np.array(genome[idx:idx+HIDDEN*OUTPUT]).reshape(HIDDEN, OUTPUT)
+        idx += HIDDEN*OUTPUT
+        
+        # Output biases (2)
+        b2 = np.array(genome[idx:idx+OUTPUT])
+        
+        return W1, b1, W2, b2
 
-            for gen in range(self.generations):
-                print(f"=== Geração {gen+1}/{self.generations} ===")
+    def run_step(self, genome):
+        self.step_count += 1
+        
+        # Check for collisions
+        self.collision = bool(
+            self.step_count > 10 and
+            (self.__ir_0.getValue() > 4300 or 
+             self.__ir_1.getValue() > 4300 or
+             self.__ir_2.getValue() > 4300 or
+             self.__ir_3.getValue() > 4300 or
+             self.__ir_4.getValue() > 4300 or
+             self.__ir_5.getValue() > 4300 or
+             self.__ir_6.getValue() > 4300)
+        )
+        
+        # Read and normalize ground sensors
+        sensor_values = [s.getValue() / 1023.0 for s in self.ground_sensors]
+        
+        # Calculate fitness
+        # sensor_left = sensor_values[0] < SENSOR_THRESHOLD
+        # sensor_right = sensor_values[1] < SENSOR_THRESHOLD
 
-                # Avaliar população
-                for i, genome in enumerate(self.population):
-                    fit = self.controller.run(genome)
-                    self.fitnesses[i] = fit
-                    print(f"Ind {i+1}: fitness={fit:.3f}")
-                    writer.writerow([gen + 1, i + 1, fit])
-                    self.fitness_history.append((gen + 1, i + 1, fit))
+        ground_sensor_left = (self.ground_sensors[0].getValue()/1023 - .6)/.2>.3 # True -> chao Flase -> Linha Preta
+        ground_sensor_right = (self.ground_sensors[1].getValue()/1023 - .6)/.2>.3
+        
+        if not ground_sensor_left or not ground_sensor_right:
+            self.time_in_line += 5
+        elif not ground_sensor_left and not ground_sensor_right:
+            self.time_in_line += 10
+        
+        # Decode genome into neural network weights
+        W1, b1, W2, b2 = self.decode_genome(genome)
+        
+        # Neural network forward pass
+        hidden = np.tanh(np.dot(sensor_values, W1) + b1)
+        output = np.tanh(np.dot(hidden, W2) + b2)
+        
+        # MODIFICATION: Ensure minimal forward motion
+        # Set motor speeds (base forward + network modulation)
+        left_speed = BASE_SPEED + output[0] * (MAX_SPEED - BASE_SPEED)
+        right_speed = BASE_SPEED + output[1] * (MAX_SPEED - BASE_SPEED)
+        
+        self.left_motor.setVelocity(max(min(left_speed, MAX_SPEED), 0))
+        self.right_motor.setVelocity(max(min(right_speed, MAX_SPEED), 0))
+        
+        self.supervisor.step(self.timestep)
+        
+    def run(self):
+        start_gen = len(self.fitness_history)
+        
+        try:
+            for gen in range(start_gen, GENERATIONS):
+                print(f"\n=== Generation {gen + 1}/{GENERATIONS} ===")
+                
+                # Evaluate each individual
+                for idx, individual in enumerate(self.population):
+                    self.reset()
+                    self.evaluation_start_time = self.supervisor.getTime()
+                    
+                    print(f"  Individual {idx+1}/{POPULATION_SIZE}", end="", flush=True)
+                    
+                    # Run simulation for evaluation period
+                    while (self.supervisor.getTime() - self.evaluation_start_time < EVALUATION_TIME 
+                           and not self.collision):
+                        self.run_step(individual['genome'])
+                    
+                    # MODIFICATION: Discard invalid fitness values
+                    fitness = self.time_in_line / EVALUATION_TIME
+                    if fitness > 10.0:
+                        print(f" - Invalid fitness {fitness:.2f} > 10 - setting to 0")
+                        fitness = 0.0
+                    else:
+                        print(f" - Fitness: {fitness:.4f}")
+                    
+                    individual['fitness'] = fitness
+                
+                # Calculate and store average fitness
+                avg_fitness = sum(ind['fitness'] for ind in self.population) / POPULATION_SIZE
+                self.fitness_history.append(avg_fitness)
+                print(f"Average fitness: {avg_fitness:.4f}")
+                
+                # Save fitness history to CSV
+                with open("fitness_history_ANN.csv", "w", newline="") as f:
+                    writer = csv.writer(f)
+                    writer.writerow(["Generation", "AverageFitness"])
+                    for i, fitness in enumerate(self.fitness_history):
+                        writer.writerow([i + 1, fitness])
+                
+                # Evolutionary algorithm
+                parents = self.select_parents()
+                new_population = parents.copy()
+                
+                # Breed new population
+                while len(new_population) < POPULATION_SIZE:
+                    parent1, parent2 = random.sample(parents, 2)
+                    child1_genome, child2_genome = self.crossover(
+                        parent1['genome'], parent2['genome'])
+                    
+                    child1 = {
+                        'genome': self.mutate(child1_genome),
+                        'fitness': 0
+                    }
+                    child2 = {
+                        'genome': self.mutate(child2_genome),
+                        'fitness': 0
+                    }
+                    new_population.extend([child1, child2])
+                
+                self.population = new_population[:POPULATION_SIZE]
+        
+        except KeyboardInterrupt:
+            print("\nSimulation interrupted!")
+            save = input("Do you want to save the current population? (y/n): ").lower()
+            if save == 'y':
+                filename = input("Enter filename to save (without extension): ") + ".npz"
+                
+                genomes = [ind['genome'] for ind in self.population]
+                fitnesses = [ind['fitness'] for ind in self.population]
+                
+                np.savez(filename,
+                         genomes=genomes,
+                         fitnesses=fitnesses,
+                         fitness_history=self.fitness_history)
+                
+                print(f"Population saved to {filename}")
+                print(f"Fitness history saved to fitness_history_ANN.csv")
+                
+                # Display fitness graph data
+                print("\nFitness history:")
+                for gen, fitness in enumerate(self.fitness_history):
+                    print(f"Generation {gen+1}: {fitness:.4f}")
+            return
 
-                # Ordenar população pela fitness (descendente)
-                idx = np.argsort(-self.fitnesses)
-                self.population = [self.population[i] for i in idx]
-                self.fitnesses  = self.fitnesses[idx]
-
-                print(f"Melhor fitness geração {gen+1}: {self.fitnesses[0]:.3f}")
-
-                # Mantém elitismo dos 2 melhores
-                new_pop = [self.population[0].copy(), self.population[1].copy()]
-
-                # Preenche o resto da população com filhos gerados por crossover e mutação
-                while len(new_pop) < self.pop_size:
-                    parent1 = self.tournament_selection()
-                    parent2 = self.tournament_selection()
-                    child1, child2 = self.crossover(parent1, parent2)
-                    new_pop.append(self.mutate(child1))
-                    if len(new_pop) < self.pop_size:
-                        new_pop.append(self.mutate(child2))
-
-                self.population = new_pop
-
-            best_genome = self.population[0]
-            print(f"\nMelhor genoma final com fitness={self.fitnesses[0]:.3f}")
-            return best_genome
-
+def main():
+    controller = Evolution()
+    controller.run()
 
 if __name__ == "__main__":
-    supervisor = Supervisor()
-    controller = ANNController(supervisor=supervisor, evaluation_time=80)
-
-    evo = Evolution(controller, pop_size=10, generations=30,
-                    mutation_rate=0.2, mutation_scale=0.05)
-    best_genome = evo.evolve()
-
-    # Avaliação final sem reiniciar supervisor
-    controller.run(best_genome)
+    main()
