@@ -117,7 +117,7 @@ class ANNController:
     def normalize_proximity(self, value):
         return max(0.0, min(1.0, value / 4096.0)) # 4096.0 maximo da reflexão detetada pelo sensor (é o valor mais proximo do obstaculo)
 
-    def fitness(self, total_steps, time_without_collision, count_colisions, total_distance, max_possible_distance):
+    def fitness(self, total_steps, time_without_collision, count_collisions, total_distance, max_possible_distance, not_up_right):
         score_color = (self.time_in_line / total_steps)
         score_proximity = (time_without_collision / total_steps)
         score_area = total_distance / max_possible_distance
@@ -133,21 +133,25 @@ class ANNController:
 
         if score_color < 0.05:
             off_line_p = self.off_line_penalty
-        if count_colisions > 10:
+        if count_collisions > 10:
             collision_p= self.collision_penalty
         if score_area < 0.2:
             area_p = self.area_penalty
 
-
-        fitness = (
-            self.weights_follow * score_color +
-            self.weights_avoid_obstacles * score_proximity +
-            self.weights_area * score_area
-        ) - (collision_p + off_line_p + area_p)
+        if not_up_right > 5:
+            fitness = 0
+        elif score_color < 0.2:
+            fitness = 0.1 * score_proximity + 0.1 * score_area + 0.8 * score_color
+        else:
+            fitness = (
+                self.weights_follow * score_color +
+                self.weights_avoid_obstacles * score_proximity +
+                self.weights_area * score_area
+            ) - (collision_p + off_line_p + area_p)
 
         fitness = max(fitness, 0)
 
-        print("---------")
+
         print("fitness:", fitness)
         print("score_color:", score_color)
         print("score_proximity:", score_proximity)
@@ -155,7 +159,9 @@ class ANNController:
         print("collision_penalty:", collision_p)
         print("off_line_penalty:", off_line_p)
         print("area_penalty:", area_p)
-        print("count_colisions:", count_colisions)
+        print("count_colisions:", count_collisions)
+        print("not_up_right:", not_up_right)
+
 
         """
         # função Loss
@@ -186,7 +192,7 @@ class ANNController:
 
         return fitness, score_color, score_proximity, score_area
 
-    def run(self, genome):
+    def run(self, genome, generation=None):
         self.reset()
         ann = AdvanceANN(genome)
         start_time = self.supervisor.getTime()
@@ -202,77 +208,102 @@ class ANNController:
 
         time_without_collision = 0
         total_steps            = 0
-        count_colisions        = 0
+        count_collisions       = 0
         max_speed              = 6
+        not_up_right           = 0
         while self.supervisor.getTime() - start_time < self.EVALUATION_TIME:
             s_ground = [self.normalize_color(sen.getValue()) for sen in self.ground_sensors]
             s_prox   = [self.normalize_proximity(s.getValue()) for s in self.prox_sensors]
+
+            # [ax, ay, az, angle]
+            # [0, 0, 1, 0] se a rotação for só no z então está direito
+            # para rodar alterar a pos [3] (o angle)
+            ax, ay, az, angle = self.robot_node.getField("rotation").getSFRotation()
+
+            if not (abs(ax) < 0.5 and abs(ay) < 0.5):
+                #print("[ax, ay, az, angle]:", [ax, ay, az, angle])
+                not_up_right += 1
+                #break # comentado para sabermos os valores dos sensores, caso não esteja de pé
 
             if s_ground[0] > 0.65 or s_ground[1] > 0.65:
                 self.time_in_line += 1
 
             # Considera colisão se algum sensor de proximidade estiver muito ativo
-            collision = any(p > 0.8 for p in s_prox)
+            collision = any(p > 0.9 for p in s_prox)
             if not collision:
                 time_without_collision += 1
-
-            if any(p > 0.98 for p in s_prox):
-                count_colisions += 1
+            else:
+                count_collisions += 1
 
             inputs = np.array(s_ground + s_prox)
             speeds = ann.forward(np.array(inputs)) * 6.0
-            base = 3.0
+            base = 3
             left  = max(0, min(max_speed, base + speeds[0]*2))
             right = max(0, min(max_speed, base + speeds[1]*2))
             self.left_motor.setVelocity(left)
             self.right_motor.setVelocity(right)
             self.supervisor.step(self.timestep)
 
-            ## mediar distancia percorrida
-            position = self.translation_field.getSFVec3f()
-            x, _, z = position
-            px, _, pz = prev_position
-
-            # Calculate Euclidean distance in the XZ plane
-            step_distance = ((x - px) ** 2 + (z - pz) ** 2) ** 0.5
-            total_distance += step_distance
-
-            prev_position = position # Update for next step
-
+            total_distance += self.exploration_bonus()
             total_steps += 1
 
-        max_distance = max_speed * self.EVALUATION_TIME
-        fitness_score, score_color, score_proximity, score_area = self.fitness(total_steps, time_without_collision, count_colisions, total_distance, max_distance)
+        max_distance = round(
+            (max_speed * self.EVALUATION_TIME) / 0.1) / 3  # não precisa de ir no max_speed o tempo todo
+        print("max_distance:", max_distance)
+        print("total_distance:", total_distance)
+        print("---------")
+        if generation != None:
+            print("Generation: ", generation)
+        fitness_score, score_color, score_proximity, score_area = self.fitness(total_steps, time_without_collision, count_collisions, total_distance, max_distance, not_up_right)
 
-        return (fitness_score, score_color, score_proximity, score_area, count_colisions)
+
+        return (fitness_score, score_color, score_proximity, score_area, count_collisions, not_up_right)
+
+    def exploration_bonus(self):
+        pos = self.robot_node.getField("translation").getSFVec3f()
+        x, y = pos[0], pos[1]
+
+        # Arredonda posição para "células de uma grelha virtual"
+        grid_x = round(x / 0.1)
+        grid_y = round(y / 0.1)
+
+        key = (grid_x, grid_y)
+
+        if not hasattr(self, "prev_visited_zones"):
+            self.prev_visited_zones = set()
+
+        if key not in self.prev_visited_zones:
+            self.prev_visited_zones.clear() # remove all previous zones
+            self.prev_visited_zones.add(key)
+            return 1.0  # recompensa por nova zona
+        else:
+            return 0.0
 
     def _randomize_obstacles(self):
         # Aceder ao campo children da raiz da cena
         root = self.supervisor.getRoot()
         children_field = root.getField("children")
-
         # Eliminar caixas anteriores (limpeza opcional)
-        for i in range(children_field.getCount()):
+        for i in reversed(range(children_field.getCount())):
             node = children_field.getMFNode(i)
-            if node.getDef() and node.getDef().startswith("WHITE_BOX_"):
+            if hasattr(node, 'getDef') and node.getDef() and node.getDef().startswith("WHITE_BOX_"):
                 children_field.removeMF(i)
-                break  # necessário reiniciar contagem se remove (ver abaixo)
 
         # Gerar novos obstáculos
         def random_orientation():
-            angle = self.np_random.uniform(0, 2 * np.pi)
+            angle = np.random.uniform(0, 2 * np.pi)
             return (0, 1, 0, angle)  # rotação no eixo Y
 
         def random_position_on_H(exclusion_radius=0.2):
             while True:
                 # Gerar nas pernas do H (laterais) e nas travessas (topo/baixo)
-                x = self.np_random.choice([
-                    self.np_random.uniform(-0.3, -0.2),  # perna esquerda
-                    self.np_random.uniform(0.2, 0.3),    # perna direita
+                x = np.random.choice([
+                    np.random.uniform(-0.3, -0.2),  # perna esquerda
+                    np.random.uniform(0.2, 0.3),    # perna direita
                 ])
-                y = self.np_random.choice([
-                    self.np_random.uniform(-0.5, -0.3),  # parte inferior do H
-                    self.np_random.uniform(0.3, 0.5),    # parte superior do H
+                y = np.random.choice([
+                    np.random.uniform(-0.5, -0.3),  # parte inferior do H
+                    np.random.uniform(0.3, 0.5),    # parte superior do H
                 ])
                 # Evita gerar no centro
                 if np.sqrt(x**2 + y**2) > exclusion_radius:
@@ -283,8 +314,8 @@ class ANNController:
         for i in range(5):
             position = random_position_on_H()
             orientation = random_orientation()
-            length = self.np_random.uniform(0.05, 0.2)
-            width = self.np_random.uniform(0.05, 0.2)
+            length = np.random.uniform(0.05, 0.2)
+            width = np.random.uniform(0.05, 0.2)
 
             box_string = f"""
             DEF WHITE_BOX_{i} Solid {{
@@ -333,6 +364,9 @@ class Evolution:
         self.fitnesses = np.zeros(self.pop_size)
         self.fitness_history = []
 
+        print("--------------------------------------------------------------------------------------")
+        print("--------------------------------------------------------------------------------------")
+        print("")
         print("....TEST ",self.controller.test)
         print("........Weights: ")
         print("...........weights_follow : ", self.controller.weights_follow)
@@ -341,6 +375,7 @@ class Evolution:
         print("...........collision_penalty : ", self.controller.collision_penalty)
         print("...........off_line_penalty : ", self.controller.off_line_penalty)
         print("...........area_penalty : ", self.controller.area_penalty)
+        print("")
 
 
     def select_parents(self):
@@ -374,18 +409,18 @@ class Evolution:
 
         with open(file_name, mode="w", newline="") as file:
             writer = csv.writer(file)
-            writer.writerow(["Generation", "Individual", "Fitness", "Score_Color_Line", "Score_Proximity_Collisions", "Score_Distance_Area", "Collisions", "genome"])
+            writer.writerow(["Generation", "Individual", "Fitness", "Score_Color_Line", "Score_Proximity_Collisions", "Score_Distance_Area", "Collisions", "Genome", "Not_Up_right"])
 
             for gen in range(self.generations):
                 print(f"=== Geração {gen+1}/{self.generations} ===")
                 for i, genome in enumerate(self.population):
-                    fit, color, proximity, area, collision  = self.controller.run(genome)
+                    fit, color, proximity, area, collision, not_up_right  = self.controller.run(genome, generation=gen)
 
                     self.fitnesses[i] = fit
                     print(f"Ind {i+1}: fitness={fit:.3f}")
 
-                    writer.writerow([gen + 1, i + 1, fit, color, proximity, area, collision])  # guardar resultados no ficheiro
-                    self.fitness_history.append((gen + 1, i + 1, fit, color, proximity, area, collision, genome))  #
+                    writer.writerow([gen + 1, i + 1, fit, color, proximity, area, collision, genome, not_up_right])  # guardar resultados no ficheiro
+                    self.fitness_history.append((gen + 1, i + 1, fit, color, proximity, area, collision, genome, not_up_right))  #
 
                 idx = np.argsort(-self.fitnesses)
                 self.population = [self.population[i] for i in idx]
@@ -414,11 +449,11 @@ class Evolution:
 
         with open(file_name, mode="w", newline="") as file:
             writer = csv.writer(file)
-            writer.writerow(["Generation", "Individual", "Fitness", "Score_Color_Line", "Score_Proximity_Collisions", "Score_Distance_Area", "Collisions", "genome"])
+            writer.writerow(["Generation", "Individual", "Fitness", "Score_Color_Line", "Score_Proximity_Collisions", "Score_Distance_Area", "Genome", "Not_Up_right"])
 
-            fit, color, proximity, area, collision  = self.controller.run(genome)
+            fit, color, proximity, area, collision, not_up_right  = self.controller.run(genome)
 
-            writer.writerow([1, 1, fit, color, proximity, area, collision, genome])
+            writer.writerow([1, 1, fit, color, proximity, area, collision, genome, not_up_right])
             print(f"Fitness={fit:.3f}")
             print(f"Score black line={color:.3f}")
             print(f"Score time without collisions={proximity:.3f}")
@@ -448,7 +483,7 @@ if __name__ == "__main__":
     controller.set_test_name(1)
 
     # Evolução usando o mesmo controller
-    evo = Evolution(controller, pop_size=10, generations=1, mutation_rate=0.2, mutation_scale=0.05)
+    evo = Evolution(controller, pop_size=10, generations=300, mutation_rate=0.2, mutation_scale=0.05)
     best_genome = evo.evolve()
 
     print("best_genome", best_genome)
@@ -471,7 +506,7 @@ if __name__ == "__main__":
     controller.set_test_name(2)
 
     # Evolução usando o mesmo controller
-    evo = Evolution(controller, pop_size=10, generations=1, mutation_rate=0.2, mutation_scale=0.05)
+    evo = Evolution(controller, pop_size=10, generations=300, mutation_rate=0.2, mutation_scale=0.05)
     best_genome = evo.evolve()
 
     # Avaliação final sem recriar Supervisor
@@ -495,7 +530,7 @@ if __name__ == "__main__":
     controller.set_test_name(3)
 
     # Evolução usando o mesmo controller
-    evo = Evolution(controller, pop_size=10, generations=1, mutation_rate=0.2, mutation_scale=0.05)
+    evo = Evolution(controller, pop_size=10, generations=300, mutation_rate=0.2, mutation_scale=0.05)
     best_genome = evo.evolve()
 
     # Avaliação final sem recriar Supervisor
