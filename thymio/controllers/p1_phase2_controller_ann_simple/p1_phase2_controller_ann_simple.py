@@ -110,8 +110,11 @@ class Evolution:
 
         ground_sensor_left = (self.ground_sensors[0].getValue()/1023 - 0.6)/0.2 > 0.3
         ground_sensor_right = (self.ground_sensors[1].getValue()/1023 - 0.6)/0.2 > 0.3
+        
+        if not ground_sensor_left or not ground_sensor_right:
+            self.time_in_line += 5
+        elif not ground_sensor_left and not ground_sensor_right:
 
-        if not ground_sensor_left and not ground_sensor_right:
             self.time_in_line += 10
         elif not ground_sensor_left or not ground_sensor_right:
             self.time_in_line += 5
@@ -151,6 +154,7 @@ class Evolution:
                     # else:
                     #     print(f" - Fitness: {fitness:.4f}")
                     print(f" - Fitness: {fitness:.4f}")
+
                     individual['fitness'] = fitness
 
                 avg_fitness = sum(ind['fitness'] for ind in self.population) / POPULATION_SIZE
