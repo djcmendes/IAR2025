@@ -98,6 +98,10 @@ class Evolution:
                     for _ in range(POPULATION_SIZE)]
         
     def reset(self):
+        self.robot_node.resetPhysics()
+        self.left_motor.setPosition(float('inf'))
+        self.right_motor.setPosition(float('inf'))
+
         self.time_in_line = 0
         self.step_count = 0
         self.collision = False
@@ -169,10 +173,11 @@ class Evolution:
         ground_sensor_left = (self.ground_sensors[0].getValue()/1023 - .6)/.2>.3 # True -> chao Flase -> Linha Preta
         ground_sensor_right = (self.ground_sensors[1].getValue()/1023 - .6)/.2>.3
         
-        if not ground_sensor_left or not ground_sensor_right:
-            self.time_in_line += 5
-        elif not ground_sensor_left and not ground_sensor_right:
-            self.time_in_line += 10
+        # Corrected condition order
+        if not ground_sensor_left and not ground_sensor_right:
+            self.time_in_line += 10  # Higher reward for centered
+        elif not ground_sensor_left or not ground_sensor_right:
+            self.time_in_line += 5   # Lower reward for partial contact
         
         # Decode genome into neural network weights
         W1, b1, W2, b2 = self.decode_genome(genome)
