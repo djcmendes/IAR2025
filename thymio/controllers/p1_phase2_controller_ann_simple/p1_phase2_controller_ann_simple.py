@@ -145,12 +145,12 @@ class Evolution:
                         self.run_step(individual['genome'])
 
                     fitness = self.time_in_line / EVALUATION_TIME
-                    if fitness > 10.0:
-                        print(f" - Invalid fitness {fitness:.2f} > 10 - setting to 0")
-                        fitness = 0.0
-                    else:
-                        print(f" - Fitness: {fitness:.4f}")
-
+                    # if fitness > 10.0:
+                    #     print(f" - Invalid fitness {fitness:.2f} > 10 - setting to 0")
+                    #     fitness = 0.0
+                    # else:
+                    #     print(f" - Fitness: {fitness:.4f}")
+                    print(f" - Fitness: {fitness:.4f}")
                     individual['fitness'] = fitness
 
                 avg_fitness = sum(ind['fitness'] for ind in self.population) / POPULATION_SIZE
