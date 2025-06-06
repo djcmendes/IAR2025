@@ -16,9 +16,8 @@ GENERATIONS = 300
 MUTATION_RATE = 0.2
 MUTATION_SIZE = 0.05
 EVALUATION_TIME = 300  # seconds
-MAX_SPEED = 9.0
+MAX_SPEED = 6.28
 BASE_SPEED = 1.0  # always forward
-SENSOR_THRESHOLD = 0.66
 
 def random_orientation():
     angle = np.random.uniform(0, 2 * np.pi)
@@ -60,6 +59,10 @@ class Evolution:
                            for _ in range(POPULATION_SIZE)]
         
     def reset(self):
+        self.robot_node.resetPhysics()
+        self.left_motor.setPosition(float('inf'))
+        self.right_motor.setPosition(float('inf'))
+
         self.time_in_line = 0
         self.step_count = 0
         self.collision = False
@@ -111,13 +114,11 @@ class Evolution:
         ground_sensor_left = (self.ground_sensors[0].getValue()/1023 - 0.6)/0.2 > 0.3
         ground_sensor_right = (self.ground_sensors[1].getValue()/1023 - 0.6)/0.2 > 0.3
         
-        if not ground_sensor_left or not ground_sensor_right:
-            self.time_in_line += 5
-        elif not ground_sensor_left and not ground_sensor_right:
-
-            self.time_in_line += 10
+        # Corrected condition order
+        if not ground_sensor_left and not ground_sensor_right:
+            self.time_in_line += 10  # Higher reward for centered
         elif not ground_sensor_left or not ground_sensor_right:
-            self.time_in_line += 5
+            self.time_in_line += 5   # Lower reward for partial contact
 
         W1, b1, W2, b2 = self.decode_genome(genome)
         hidden = np.tanh(np.dot(sensor_values, W1) + b1)
@@ -148,11 +149,11 @@ class Evolution:
                         self.run_step(individual['genome'])
 
                     fitness = self.time_in_line / EVALUATION_TIME
-                    # if fitness > 10.0:
-                    #     print(f" - Invalid fitness {fitness:.2f} > 10 - setting to 0")
-                    #     fitness = 0.0
-                    # else:
-                    #     print(f" - Fitness: {fitness:.4f}")
+                    if fitness > 14.0:
+                        print(f" - Invalid fitness {fitness:.2f} > 10 - setting to 0")
+                        fitness = 0.0
+                    else:
+                        print(f" - Fitness: {fitness:.4f}")
                     print(f" - Fitness: {fitness:.4f}")
 
                     individual['fitness'] = fitness
