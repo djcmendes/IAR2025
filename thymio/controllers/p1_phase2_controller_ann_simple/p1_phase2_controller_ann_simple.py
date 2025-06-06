@@ -17,9 +17,8 @@ GENERATIONS = 300
 MUTATION_RATE = 0.2
 MUTATION_SIZE = 0.05
 EVALUATION_TIME = 300  # Simulated seconds per individual
-MAX_SPEED = 9.0
+MAX_SPEED = 6.28
 BASE_SPEED = 1.0  # Minimal always-forward motion
-SENSOR_THRESHOLD = 0.66  # Threshold for detecting black line
 
 def random_orientation():
     angle = np.random.uniform(0, 2 * np.pi)
@@ -167,10 +166,6 @@ class Evolution:
         # Read and normalize ground sensors
         sensor_values = [s.getValue() / 1023.0 for s in self.ground_sensors]
         
-        # Calculate fitness
-        # sensor_left = sensor_values[0] < SENSOR_THRESHOLD
-        # sensor_right = sensor_values[1] < SENSOR_THRESHOLD
-
         ground_sensor_left = (self.ground_sensors[0].getValue()/1023 - .6)/.2>.3 # True -> chao Flase -> Linha Preta
         ground_sensor_right = (self.ground_sensors[1].getValue()/1023 - .6)/.2>.3
         
@@ -217,8 +212,8 @@ class Evolution:
                     
                     # MODIFICATION: Discard invalid fitness values
                     fitness = self.time_in_line / EVALUATION_TIME
-                    if fitness > 10.0:
-                        print(f" - Invalid fitness {fitness:.2f} > 10 - setting to 0")
+                    if fitness > 7.8:
+                        print(f" - Invalid fitness {fitness:.2f} > 7.8 - setting to 0")
                         fitness = 0.0
                     else:
                         print(f" - Fitness: {fitness:.4f}")
