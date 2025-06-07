@@ -121,8 +121,8 @@ class Evolution:
             self.time_in_line += 5   # Lower reward for partial contact
 
         W1, b1, W2, b2 = self.decode_genome(genome)
-        hidden = np.tanh(np.dot(sensor_values, W1) + b1)
-        output = np.tanh(np.dot(hidden, W2) + b2)
+        hidden = np.relu(np.dot(sensor_values, W1) + b1)
+        output = np.relu(np.dot(hidden, W2) + b2)
 
         left_speed = BASE_SPEED + output[0] * (MAX_SPEED - BASE_SPEED)
         right_speed = BASE_SPEED + output[1] * (MAX_SPEED - BASE_SPEED)
@@ -153,6 +153,7 @@ class Evolution:
                     while (self.supervisor.getTime() - self.evaluation_start_time < EVALUATION_TIME):
                         self.run_step(individual['genome'])
 
+                    fitness = self.time_in_line / EVALUATION_TIME
                     if gen < 150: # para nao aprender a se virar ao contrario
                         if fitness > 14.0:
                             print(f" - Invalid fitness {fitness:.2f} > 14 - setting to 0")
