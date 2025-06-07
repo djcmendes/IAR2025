@@ -6,21 +6,21 @@ import csv
 
 # Simulation parameters
 TIME_STEP = 64
-POPULATION_SIZE = 10
-PARENTS_KEEP = 3
+POPULATION_SIZE = 30
+PARENTS_KEEP = 4
 INPUT = 2
 HIDDEN = 4
 OUTPUT = 2
 GENOME_SIZE = (INPUT * HIDDEN) + HIDDEN + (HIDDEN * OUTPUT) + OUTPUT
 GENERATIONS = 300
-MUTATION_RATE = 0.2
-MUTATION_SIZE = 0.05
-EVALUATION_TIME = 200  # seconds
-MAX_SPEED = 6.28
+MUTATION_RATE = 0.1
+MUTATION_SIZE = 0.2                                        
+EVALUATION_TIME = 200 # seconds
+MAX_SPEED = 6.28                                 
 BASE_SPEED = 3.0  # always forward
 
-def random_orientation():
-    angle = np.random.uniform(0, 2 * np.pi)
+def random_orientation():                    
+    angle = np.random.uniform(0, 2 * np.pi)              
     return (0, 0, 1, angle)
 
 def random_position(min_radius, max_radius, z):
@@ -154,14 +154,16 @@ class Evolution:
                         self.run_step(individual['genome'])
 
                     fitness = self.time_in_line / EVALUATION_TIME
-                    if gen < 150: # para nao aprender a se virar ao contrario
-                        if fitness > 14.0:
-                            print(f" - Invalid fitness {fitness:.2f} > 14 - setting to 0")
-                            fitness = 0.0
-                        else:
-                            print(f" - Fitness: {fitness:.4f}")
-                    else:
-                        print(f" - Fitness: {fitness:.4f}")
+                    # if gen < 150: # para nao aprender a se virar ao contrario
+                    #     if fitness > 14.0:
+                    #         print(f" - Invalid fitness {fitness:.2f} > 14 - setting to 0")
+                    #         fitness = 0.0
+                    #     else:
+                    #         print(f" - Fitness: {fitness:.4f}")
+                    # else:
+                    #     print(f" - Fitness: {fitness:.4f}")^
+
+                    print(f" - Fitness: {fitness:.4f}")
 
                     individual['fitness'] = fitness
 
