@@ -5,6 +5,19 @@
 
 set -e
 
+# Default port
+PORT=1234
+
+# Check if a --port=XXXX argument was passed
+for arg in "$@"; do
+  if [[ "$arg" == --port=* ]]; then
+    PORT="${arg#--port=}"
+    # Remove the port argument from the list to avoid passing it to the controller script
+    set -- "${@/--port=$PORT/}"
+    break
+  fi
+done
+
 # Configure Webots paths
 export WEBOTS_HOME="/snap/webots/current/usr/share/webots"
 export LD_LIBRARY_PATH="$WEBOTS_HOME/lib/controller:$LD_LIBRARY_PATH"
@@ -30,4 +43,4 @@ source "$VENV_DIR/bin/activate"
 #fi
 
 # Run controller script with Webots arguments
-$WEBOTS_HOME/webots-controller "$@"
+$WEBOTS_HOME/webots-controller --port="$PORT" "$@"

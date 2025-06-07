@@ -124,8 +124,8 @@ class Evolution:
         hidden = np.tanh(np.dot(sensor_values, W1) + b1)
         output = np.tanh(np.dot(hidden, W2) + b2)
 
-        left_speed = BASE_SPEED + output[0] * (MAX_SPEED - BASE_SPEED)
-        right_speed = BASE_SPEED + output[1] * (MAX_SPEED - BASE_SPEED)
+        left_speed = BASE_SPEED + abs(output[0]) * (MAX_SPEED - BASE_SPEED)
+        right_speed = BASE_SPEED + abs(output[1]) * (MAX_SPEED - BASE_SPEED)
 
         
 
