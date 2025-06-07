@@ -7,16 +7,16 @@ import os
 
 # Simulation parameters
 TIME_STEP = 64
-POPULATION_SIZE = 20
-PARENTS_KEEP = 4
+POPULATION_SIZE = 10
+PARENTS_KEEP = 3
 INPUT = 5 # 2 ground + 3 proximity
 HIDDEN = 4
 OUTPUT = 2
 GENOME_SIZE = (INPUT * HIDDEN) + HIDDEN + (HIDDEN * OUTPUT) + OUTPUT
-GENERATIONS = 300
-MUTATION_RATE = 0.15
+GENERATIONS = 1
+MUTATION_RATE = 0.2
 MUTATION_SIZE = 0.05
-EVALUATION_TIME = 200  # Simulated seconds per individual
+EVALUATION_TIME = 10  # Simulated seconds per individual
 MAX_SPEED = 6.28
 BASE_SPEED = 3.0  # Minimal always-forward motion
 
@@ -285,15 +285,6 @@ class Evolution:
                         total_steps += 1
 
                     line_fitness = (self.time_in_line / EVALUATION_TIME)
-                    
-                    fitness = self.time_in_line / EVALUATION_TIME
-                    if gen < 150: # para nao aprender a se virar ao contrario
-                        if fitness > 16.0*5.0:
-                            print(f" - Invalid fitness {fitness:.2f} > 14 - setting to 0")
-                            fitness = 0.0
-
-                    individual['fitness'] = fitness
-                    
                     collisions_fitness = (self.time_without_collision / EVALUATION_TIME)
 
                     #score_collision    = self.time_without_collision / total_steps
@@ -309,7 +300,7 @@ class Evolution:
                     #fitness = min(1.0, max(0.0, fitness))
 
                     individual['fitness'] = line_fitness + collisions_fitness
-                    #print(f"{idx} Fitness: {individual['fitness']:.2f}", flush=True)
+                    print(f"{idx} Fitness: {individual['fitness']:.2f}", flush=True)
                     """
                     individual['score_time_in_line'] = score_time_in_line
                     individual['score_collision'] = score_collision
