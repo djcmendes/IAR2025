@@ -121,8 +121,8 @@ class Evolution:
             self.time_in_line += 5   # Lower reward for partial contact
 
         W1, b1, W2, b2 = self.decode_genome(genome)
-        hidden = np.relu(np.dot(sensor_values, W1) + b1)
-        output = np.relu(np.dot(hidden, W2) + b2)
+        hidden = np.tanh(np.dot(sensor_values, W1) + b1)
+        output = np.tanh(np.dot(hidden, W2) + b2)
 
         left_speed = BASE_SPEED + output[0] * (MAX_SPEED - BASE_SPEED)
         right_speed = BASE_SPEED + output[1] * (MAX_SPEED - BASE_SPEED)
