@@ -1,0 +1,220 @@
+#VRML_SIM R2025a utf8
+
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/projects/objects/backgrounds/protos/TexturedBackground.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/projects/objects/backgrounds/protos/TexturedBackgroundLight.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/projects/robots/mobsya/thymio/protos/Thymio2.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/projects/objects/solids/protos/SolidBox.proto"
+
+WorldInfo {
+  basicTimeStep 10
+  FPS 30
+  contactProperties [
+    ContactProperties {
+      material2 "thymio body"
+      coulombFriction [
+        0.7
+      ]
+    }
+  ]
+}
+Viewpoint {
+  orientation -0.1483389531096772 0.9493490210739091 0.2770053991826434 1.0271784979739993
+  position -1.7994921551418495 -0.4752757535221172 3.4498106037516787
+  follow "Thymio II"
+  followType "None"
+}
+TexturedBackground {
+}
+TexturedBackgroundLight {
+}
+DEF ROBOT Thymio2 {
+  hidden position_0_0 -755903.1381389695
+  hidden position_0_1 -704515.2214571103
+  hidden linearVelocity_0 0.022657488064102692 -0.04288881661308907 5.022739995255947e-05
+  hidden angularVelocity_0 0.030893772277593823 0.01317092078843282 -1.7125130675270275
+  hidden rotation_1 0.7056291260741688 0.7056291716084564 -0.06461430655023885 3.2706417968616277
+  hidden linearVelocity_1 0.11717684704103425 -0.05262593292491925 0.0016966874848203086
+  hidden angularVelocity_1 -3.041170405591822 8.472768139018038 -1.7720307888058062
+  hidden rotation_2 -0.4536893907244736 -0.45368937220093286 -0.7670279592661399 4.450213206049176
+  hidden linearVelocity_2 -0.044043635969307667 -0.11076544797892414 -0.001682650475967927
+  hidden angularVelocity_2 -2.831160194274535 7.897374847505515 -1.7664286034860586
+  translation 0.3022782354999574 -0.6114267779464823 1.000091614013296
+  rotation 0.003048659198847044 0.0022061524296388938 0.9999929192592047 -2.8023979448027454
+  controller "train_runner_controller"
+  window "thymio2"
+  supervisor TRUE
+}
+SolidBox {
+  translation -0.01 -4.69282e-08 0
+  rotation 0 0 1 4.692820414042842e-06
+  name "box(1)"
+  size 0.3 0.5 2
+  appearance PBRAppearance {
+    baseColor 0.8 0.8 0.8
+    roughness 0.5
+    metalness 0
+  }
+}
+SolidBox {
+  translation -0.28 0.5 0
+  rotation 0 0 1 4.692820414042842e-06
+  name "box(2)"
+  size 0.5 0.5 2
+  appearance PBRAppearance {
+    baseColor 0.8 0.8 0.8
+    roughness 0.5
+    metalness 0
+  }
+}
+SolidBox {
+  translation 0.24 -0.5 0
+  rotation 0 0 1 4.692820414042842e-06
+  name "box(3)"
+  size 0.5 0.5 2
+  appearance PBRAppearance {
+    baseColor 0.8 0.8 0.8
+    roughness 0.5
+    metalness 0
+  }
+}
+SolidBox {
+  translation 0.22 0.5 0
+  rotation 0 0 1 4.692820414042842e-06
+  name "box(4)"
+  size 0.5 0.5 2
+  appearance PBRAppearance {
+    baseColor 0.8 0.8 0.8
+    roughness 0.5
+    metalness 0
+  }
+}
+SolidBox {
+  translation -0.26 -0.5 0
+  rotation 0 0 1 4.692820414042842e-06
+  name "box(5)"
+  size 0.5 0.5 2
+  appearance PBRAppearance {
+    baseColor 0.8 0.8 0.8
+    roughness 0.5
+    metalness 0
+  }
+}
+DEF WHITE_BOX_0 Solid {
+  translation 0.007996007188762526 0.40896456707627893 1.0931081564052298
+  rotation -1.569823074262665e-09 -1 1.7553621385679358e-10 1.5700597687280922
+  children [
+    Shape {
+      appearance Appearance {
+        material Material {
+          diffuseColor 1 1 1
+        }
+      }
+      geometry Box {
+        size 0.18665913966293363 0.0906198380693406 0.2
+      }
+    }
+  ]
+  boundingObject Box {
+    size 0.18665913966293363 0.0906198380693406 0.2
+  }
+  physics Physics {
+  }
+  linearVelocity 1.2584920727624525e-08 2.6634693250356532e-14 -8.612716299074626e-12
+  angularVelocity -4.209653235552976e-15 2.1221652569214355e-10 -1.8443505827296007e-13
+}
+DEF WHITE_BOX_1 Solid {
+  translation 0.4380863876476416 -0.6517101380881062 1.0463550181158272
+  rotation 0.41839201944148613 0.8064417027896706 0.41785152634562883 -1.7842162414059217
+  children [
+    Shape {
+      appearance Appearance {
+        material Material {
+          diffuseColor 1 1 1
+        }
+      }
+      geometry Box {
+        size 0.09308694359094652 0.12013325784258594 0.2
+      }
+    }
+  ]
+  name "solid(1)"
+  boundingObject Box {
+    size 0.09308694359094652 0.12013325784258594 0.2
+  }
+  physics Physics {
+  }
+  linearVelocity -6.788555146498383e-05 -2.1330185301436634e-05 -5.327551207369336e-05
+  angularVelocity 0.0004665147764388624 -0.0015110872318891606 -1.652415340766509e-05
+}
+DEF WHITE_BOX_2 Solid {
+  translation 0.3589378175833547 -0.45025181927832847 1.09971114850129
+  rotation -0.0002363796223779565 0.004572349207794761 0.9999895188187705 0.1033619825170813
+  children [
+    Shape {
+      appearance Appearance {
+        material Material {
+          diffuseColor 1 1 1
+        }
+      }
+      geometry Box {
+        size 0.06799079281098762 0.17322183348364295 0.2
+      }
+    }
+  ]
+  name "solid(2)"
+  boundingObject Box {
+    size 0.06799079281098762 0.17322183348364295 0.2
+  }
+  physics Physics {
+  }
+  linearVelocity 1.3982172167332056e-05 1.3769264547736296e-06 -1.7768782170282912e-07
+  angularVelocity -1.1678417695346465e-05 0.00011976192238104178 2.0246456922882023e-05
+}
+DEF WHITE_BOX_3 Solid {
+  translation -30823.80406819828 32835.00068628662 -34647230055.9789
+  rotation -0.7558271684322425 -0.5286631272020134 0.38631669572604077 -1.3226866238098367
+  children [
+    Shape {
+      appearance Appearance {
+        material Material {
+          diffuseColor 1 1 1
+        }
+      }
+      geometry Box {
+        size 0.17520380204901237 0.10520366299625887 0.2
+      }
+    }
+  ]
+  name "solid(3)"
+  boundingObject Box {
+    size 0.17520380204901237 0.10520366299625887 0.2
+  }
+  physics Physics {
+  }
+  linearVelocity -0.3667473205637823 0.39068441811081667 -824486.8541173293
+  angularVelocity 3417.3200436101606 1339.2057758577898 -9302.06706111332
+}
+DEF WHITE_BOX_4 Solid {
+  translation -0.22533522336790315 0.4731336340058365 1.099452904193768
+  rotation 8.691786777850485e-14 9.607406138221175e-15 1 0.048363073836414465
+  children [
+    Shape {
+      appearance Appearance {
+        material Material {
+          diffuseColor 1 1 1
+        }
+      }
+      geometry Box {
+        size 0.17637830353421208 0.12647631645756635 0.2
+      }
+    }
+  ]
+  name "solid(4)"
+  boundingObject Box {
+    size 0.17637830353421208 0.12647631645756635 0.2
+  }
+  physics Physics {
+  }
+  linearVelocity -5.575995368922364e-16 1.1914610996090231e-14 -1.377051146836669e-13
+  angularVelocity -1.1907222266468343e-13 -5.584920093290316e-15 -1.8085682694388352e-17
+}

@@ -1,108 +1,229 @@
 #
 # ISCTE-IUL, IAR, 2024/2025.
 #
-# PPO Training for Thymio Robot in Webots.
+# Template to use SB3 to train a Thymio in Webots.
 #
 
-import tensorflow
-print("TensorFlow imported successfully")
-try:
-    import tensorboard
-    print("TensorBoard imported successfully")
-except ImportError as e:
-    print(f"Error importing TensorBoard: {e}")
-except AttributeError as e:
-    print(f"AttributeError related to TensorBoard/Protobuf: {e}")
-
 import sys
+import os
+from datetime import datetime
+import time
+import gymnasium as gym
+import numpy as np
+import math
+from stable_baselines3.common.callbacks import CheckpointCallback
+from stable_baselines3.common.env_util import make_vec_env
+from stable_baselines3.common.vec_env import VecNormalize
+from stable_baselines3 import PPO
+from controller import Supervisor
 
-try:
-    import time
-    import gymnasium as gym
-    import numpy as np
-    from stable_baselines3 import PPO
-    from stable_baselines3.common.env_checker import check_env
-    from controller import Supervisor
-
-except ImportError:
-    sys.exit('Please make sure you have all dependencies installed.')
-
+MAX_SPEED = 9
+NUM_OBS = 5
+MAX_PS_VALUE = 4000.0    
+MAX_GS_VALUE = 1000.0
 
 #
 # Structure of a class to create an OpenAI Gym in Webots.
 #
-
 class OpenAIGymEnvironment(Supervisor, gym.Env):
-    def __init__(self, max_episode_steps = ...):
+    def __init__(self, max_episode_steps = 500, reward_config=None, random_obstacles=True):
         super().__init__()
-        self.spec = gym.envs.registration.EnvSpec(
-            id='WebotsEnv-v0', 
-            entry_point='openai_gym:OpenAIGymEnvironment', 
-            max_episode_steps=max_episode_steps
-        )
+        self.spec = gym.envs.registration.EnvSpec(id='WebotsEnv-v0', entry_point='openai_gym:OpenAIGymEnvironment', max_episode_steps=max_episode_steps)
         self.__timestep = int(self.getBasicTimeStep())
-        self.__n = 0
+        self.max_episode_steps = max_episode_steps
+        self.random_obstacles = random_obstacles
 
-        # Espaço de ações: velocidades [-1.0, 1.0] para cada roda
+        self.reward_config = reward_config or {
+            "penaliza_queda": True,
+            "penaliza_proximidade": True,
+            "recompensa_movimento": True,
+            "recompensa_base": True
+        }
+
+        # Cada roda pode ter uma velocidade entre -1.0 e 1.0 (ajustável)
         self.action_space = gym.spaces.Box(
-            low=np.array([-1.0, -1.0]),
-            high=np.array([1.0, 1.0]),
+            low=np.array([-1.0, -1.0]), 
+            high=np.array([1.0, 1.0]), 
             dtype=np.float32
         )
 
-        # Espaço de observações: 5 sensores proximidade + 2 sensores de chão
+        # 5 sensores frontais + 2 sensores de chão → 7 observações normalizadas
         self.observation_space = gym.spaces.Box(
-            low=np.zeros(7),
-            high=np.ones(7),
+            low=np.zeros(7), 
+            high=np.ones(7), 
             dtype=np.float32
         )
 
-        # Sensores
-        self.prox_sensors = [self.getDevice(f"prox.horizontal.{i}") for i in range(5)]
-        self.ground_sensors = [self.getDevice(f"prox.ground.{i}") for i in range(2)]
-        for sensor in self.prox_sensors + self.ground_sensors:
+        self.__n = 0
+        self.state = None
+
+        self.root = self.getRoot()
+        self.robot_node = self.getFromDef("ROBOT")
+        self.children_field = self.root.getField("children")
+
+        # Get robot initial position
+        self.init_translation_field = self.robot_node.getField("translation").getSFVec3f()
+        self.last_position = self.init_translation_field
+
+        # Setup sensors and motors
+        self._setup_sensors()
+        self._setup_motors()
+
+
+    def _setup_sensors(self):
+        """Initialize and enable all sensors"""
+        self.ps = [self.getDevice(f'prox.horizontal.{i}') for i in range(5)]
+        self.ground = [self.getDevice(f'prox.ground.{i}') for i in range(2)]
+        for sensor in self.ps + self.ground:
             sensor.enable(self.__timestep)
 
-        # Motores
-        self.left_motor = self.getDevice("motor.left")
-        self.right_motor = self.getDevice("motor.right")
-        self.left_motor.setPosition(float('inf'))
-        self.right_motor.setPosition(float('inf'))
+    def _setup_motors(self):
+        """Initialize and configure motors"""
+        self.left_motor = self.getDevice('motor.left')
+        self.right_motor = self.getDevice('motor.right')
         self.left_motor.setVelocity(0.0)
         self.right_motor.setVelocity(0.0)
+        self.left_motor.setPosition(float('inf'))
+        self.right_motor.setPosition(float('inf'))
 
-        self.boxes = [self.getFromDef(f"OBS_{i}") for i in range(3)]
+    def _stop_motors(self):
+        """Stop both motors"""
+        self.left_motor.setVelocity(0.0)
+        self.right_motor.setVelocity(0.0)
+        self.left_motor.setPosition(float('inf'))
+        self.right_motor.setPosition(float('inf'))
+    
+    def _reset_pos(self):
+        if self.robot_node is None:
+            print("Erro: robô THYMIO não encontrado!")
+        else:
+            # Randomizar orientação (ângulo yaw)
+            position = [0, 0, 1.01]     # centro do ambiente
+            yaw = self.np_random.uniform(low=0, high=2*np.pi)
+            rotation = [0, 0, 1, yaw]  # eixo z
 
-        # Histórico de posições visitadas
-        self.visited = set()
+            self.robot_node.getField("translation").setSFVec3f(position)
+            self.robot_node.getField("rotation").setSFRotation(rotation)
+            self.robot_node.resetPhysics()  # Reiniciar física do robô
+    
+    def _get_observation(self):
+        """Get current sensor readings normalized to [0,1]"""
+        readings = []
+        
+        # Front proximity sensors
+        for sensor in self.ps:
+            readings.append(sensor.getValue() / MAX_PS_VALUE)
+            
+        # Ground sensors
+        for sensor in self.ground:
+            readings.append(sensor.getValue() / MAX_GS_VALUE)
+            
+        return np.array(readings, dtype=np.float32)
 
+    def _compute_reward(self, obs, action):
+        reward = 0.0
+        terminated = False
+        info = {}
 
-    def _get_sensor_state(self):
-        prox_readings = [sensor.getValue() for sensor in self.prox_sensors]
-        ground_readings = [sensor.getValue() for sensor in self.ground_sensors]
+        current_position = self.robot_node.getField("translation").getSFVec3f()
+        min_ground = min(obs[5:])  # Ground sensors
 
-        # Normalização simples
-        norm_prox = [min(p / 4000.0, 1.0) for p in prox_readings]
-        norm_ground = [min(g / 4000.0, 1.0) for g in ground_readings]
+        if self.reward_config.get("penaliza_queda", True) and min_ground < 0.7:
+            reward -= 10
 
-        return np.array(norm_prox + norm_ground)
+        # Verificar queda real (Z abaixo do permitido)
+        if current_position[2] < (self.init_translation_field[2] - 0.1):
+            terminated = True
+            info['fall'] = True
+            info['termination_reason'] = 'fall'
+            return reward, terminated, info
+
+        dx = current_position[0] - self.last_position[0]
+        dy = current_position[1] - self.last_position[1]
+        distance = math.sqrt(dx ** 2 + dy ** 2)
+
+        if self.reward_config.get("recompensa_movimento", True):
+            if distance < 0.01:
+                reward -= 0.5
+            else:
+                reward += distance * 10
+
+        if self.reward_config.get("penaliza_proximidade", True):
+            if max(obs[:5]) > 0.8:
+                reward -= 0.5
+
+        if self.reward_config.get("recompensa_base", True):
+            reward += 0.1
+
+        self.last_position = current_position
+        return reward, terminated, info
 
     def _randomize_obstacles(self):
-        for box in self.boxes:
-            if box is None:
-                continue
-            trans = box.getField("translation")
-            rot = box.getField("rotation")
+        if not self.random_obstacles:
+            return
+        
+        # Remove existing obstacles
+        i = 0
+        while i < self.children_field.getCount():
+            node = self.children_field.getMFNode(i)
+            node_def = node.getDef()
+            if node_def and node_def.startswith("WHITE_BOX_"):
+                self.children_field.removeMF(i)
+            else:
+                i += 1
 
-            # evitar zona central onde nasce o robô
-            x = np.random.uniform(-0.4, 0.4)
-            z = np.random.uniform(-0.4, 0.4)
-            while abs(x) < 0.1 and abs(z) < 0.1:
-                x = np.random.uniform(-0.4, 0.4)
-                z = np.random.uniform(-0.4, 0.4)
+        # Funções auxiliares
+        def random_orientation():
+            angle = self.np_random.uniform(0, 2 * np.pi)
+            return (0, 0, 1, angle)  
 
-            trans.setSFVec3f([x, 0.02, z])
-            rot.setSFRotation([0, 1, 0, np.random.uniform(0, 2*np.pi)])
+        def random_position_on_H(exclusion_radius=0.2):
+            while True:
+                x = self.np_random.choice([
+                    self.np_random.uniform(-0.3, -0.2),  # perna esquerda
+                    self.np_random.uniform(0.2, 0.3),    # perna direita
+                ])
+                y = self.np_random.choice([
+                    self.np_random.uniform(-0.5, -0.3),  # base
+                    self.np_random.uniform(0.3, 0.5),    # topo
+                ])
+                if np.sqrt(x**2 + y**2) > exclusion_radius:
+                    return x, y, 1.01
+
+        # Criar novos obstáculos
+        for i in range(NUM_OBS):
+            position = random_position_on_H()
+            orientation = random_orientation()
+            length = self.np_random.uniform(0.05, 0.2)
+            width = self.np_random.uniform(0.05, 0.2)
+
+            box_string = f"""
+            DEF WHITE_BOX_{i} Solid {{
+            translation {position[0]} {position[1]} {position[2]}
+            rotation {orientation[0]} {orientation[1]} {orientation[2]} {orientation[3]}
+            physics Physics {{
+                density 1000.0
+            }}
+            children [
+                Shape {{
+                appearance Appearance {{
+                    material Material {{
+                    diffuseColor 1 1 1
+                    }}
+                }}
+                geometry Box {{
+                    size {length} {width} 0.2
+                }}
+                }}
+            ]
+            boundingObject Box {{
+                size {length} {width} 0.2
+            }}
+            }}
+            """
+            self.children_field.importMFNodeFromString(-1, box_string)
+
+
     #
     # Reset the environment to an initial internal state, returning an initial observation and info.
     #
@@ -111,147 +232,85 @@ class OpenAIGymEnvironment(Supervisor, gym.Env):
         self.simulationReset()
         self.simulationResetPhysics()
         super().step(self.__timestep)
+
+        # Reset counters and motors
         self.__n = 0
+        self._stop_motors()
+        self._reset_pos()
+        self.last_position = self.robot_node.getField("translation").getSFVec3f()
 
-        # Motores parados
-        self.left_motor.setVelocity(0.0)
-        self.right_motor.setVelocity(0.0)
-
-        # Obstáculos aleatórios
-        self._randomize_obstacles()
-        self.visited = set()
-
-        for i in range(15):  # estabilizar física
+        # you may need to iterate a few times to let physics stabilize
+        for i in range(15):
             super().step(self.__timestep)
 
-        self.state = self._get_sensor_state()
-        return self.state.astype(np.float32), {}
+        # set the initial state vector to return
+        init_state = self._get_observation()
+
+        if self.random_obstacles:
+            self._randomize_obstacles()
+
+        return np.array(init_state).astype(np.float32), {}
+
 
     #
     # Run one timestep of the environment’s dynamics using the agent actions.
     #   
     def step(self, action):
         self.__n += 1
-        left_speed, right_speed = action
 
-        MAX_SPEED = 6.28
-        actual_left_vel = float(np.clip(left_speed, -1, 1)) * MAX_SPEED
-        actual_right_vel = float(np.clip(right_speed, -1, 1)) * MAX_SPEED
-        
-        # print(f"Step {self.__n}: Setting motor vels = [{actual_left_vel:.4f}, {actual_right_vel:.4f}]") # DEBUG
-        
-        self.left_motor.setVelocity(actual_left_vel)
-        self.right_motor.setVelocity(actual_right_vel)
+        action = np.array(action, dtype=np.float32).flatten()
+        left_speed = float(action[0] * MAX_SPEED)
+        right_speed = float(action[1] * MAX_SPEED)
+        self.left_motor.setVelocity(left_speed)
+        self.right_motor.setVelocity(right_speed)
 
         for _ in range(10):
             super().step(self.__timestep)
 
-        self.state = self._get_sensor_state()
+        self.state = self._get_observation()
+        reward, terminated, info = self._compute_reward(self.state, action)
 
-        # Atualiza posição do robô
-        robot_node = self.getSelf()
-        self.robot_position = robot_node.getField("translation").getSFVec3f()
+        truncated = self.__n >= self.max_episode_steps
+        if truncated:
+            info['truncated'] = True
 
-        # (1) Evitar precipícios
-        ground_safe = 1.0 - np.mean(self.state[5:])
-
-        # (2) Evitar obstáculos
-        obstacle_penalty = np.mean(self.state[:5])
-
-        # (3) Explorar espaço (grid virtual)
-        x, z = self.robot_position[0], self.robot_position[2]
-        cell = (round(x, 1), round(z, 1))
-        new_area_reward = 1.0 if cell not in self.visited else 0.0
-        self.visited.add(cell)
-
-        # (4) Preferir movimento para a frente
-        linear_velocity = (left_speed + right_speed) / 2
-        velocity_reward = max(0.0, linear_velocity)
-
-        # (5) Recompensa total ponderada
-        reward = (
-            + 2.0 * ground_safe
-            - 1.0 * obstacle_penalty
-            + 1.5 * new_area_reward
-            + 1.0 * velocity_reward
-        )
-
-        terminated = bool(np.any(self.state[5:] < 0.1))  # chão inseguro
-        truncated = bool(self.__n >= 200)
-
-        return self.state.astype(np.float32), reward, terminated, truncated, {}
+        return self.state.astype(np.float32), reward, terminated, truncated, info
 
 
 def main():
-    env = OpenAIGymEnvironment(max_episode_steps=200)
-    check_env(env)  # opcional: verifica erros comuns
-
-    model = PPO("MlpPolicy", env, verbose=1, device="cuda")
-    model.learn(total_timesteps=10000)  # ajustar conforme testes
-    model.save("ppo_thymio")
-
-def test():
-    print("Starting test() for basic robot movement...")
     
-    # 1. Create an instance of your environment.
-    # The max_episode_steps doesn't really matter for this direct control test.
-    robot_controller = OpenAIGymEnvironment(max_episode_steps=100)
+    # Criar pasta única para este treino com timestamp
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    checkpoint_path = f"./checkpoints/run_{timestamp}"
+    os.makedirs(checkpoint_path, exist_ok=True)
 
-    # 2. Ensure motors are available (they should be initialized in __init__)
-    if robot_controller.left_motor is None or robot_controller.right_motor is None:
-        print("CRITICAL in test(): Motors not found. Aborting test.")
-        return
-    print("Motors appear to be initialized in test().")
+    # Create the environment to train / test the robot
+    checkpoint = CheckpointCallback(save_freq=10000, save_path=checkpoint_path, name_prefix='ppo')
+    env = make_vec_env(OpenAIGymEnvironment)
+    env = VecNormalize(env, norm_obs=True, norm_reward=True)
 
-    # 3. Define a speed for the motors (e.g., rad/s)
-    # MAX_SPEED_WEBOTS in your class is 6.28. Let's try a moderate speed.
-    test_forward_speed = 3.0  # rad/s
-    print(f"Setting motor velocities to: {test_forward_speed} rad/s")
-    robot_controller.left_motor.setVelocity(test_forward_speed)
-    robot_controller.right_motor.setVelocity(test_forward_speed)
+    env.reset()
 
-    # 4. Let the simulation run for a certain number of Webots steps
-    # Access the private __timestep variable via its mangled name for this test
-    # This is generally not good practice but acceptable for a direct test script.
-    webots_timestep_duration = robot_controller._OpenAIGymEnvironment__timestep
-    if webots_timestep_duration <= 0:
-        print(f"CRITICAL in test(): Invalid Webots timestep: {webots_timestep_duration}. Aborting.")
-        return
-        
-    simulation_run_steps = 200  # Run for 200 Webots basic timesteps
-    print(f"Running Webots simulation for {simulation_run_steps} steps of {webots_timestep_duration}ms each...")
+    model = PPO(
+        'MlpPolicy',
+        env,
+        verbose=1,
+        device='cpu',
+        learning_rate=3e-4, #default
+        ent_coef = 0.01
+    )
 
-    for i in range(simulation_run_steps):
-        # Call the step method of the SUPERVISOR class directly.
-        # This advances the Webots simulation by one basic timestep.
-        # `robot_controller` is an instance of OpenAIGymEnvironment, which is a Supervisor.
-        # `Supervisor.step(instance_of_supervisor, duration_of_step)`
-        if Supervisor.step(robot_controller, webots_timestep_duration) == -1:
-            print(f"Webots simulation terminated by an external event at step {i+1}.")
-            break
-        
-        # Optional: Print a message periodically
-        if (i + 1) % 50 == 0:
-            print(f"Webots simulation step {i + 1} / {simulation_run_steps} completed.")
-            # You could also get sensor readings here if needed for debugging:
-            # current_sensors = robot_controller._get_sensor_state()
-            # print(f"Current sensors: {current_sensors}")
+    print("Vai comecar o treino PPO")
+    try:
+        model.learn(total_timesteps=100000, callback=[checkpoint])
+        model.save("ppo_thymio")
+        env.save("ppo_thymio.vecnormalize")  # <- Adiciona esta linha
+        print("Treino concluído e modelo guardado com sucesso.")
 
-    print("Test movement duration finished.")
+    except KeyboardInterrupt:
+        print("Treino interrompido. A guardar modelo...")
+        model.save("ppo_thymio_interrupt")
 
-    # 5. Stop the motors
-    print("Stopping motors...")
-    robot_controller.left_motor.setVelocity(0.0)
-    robot_controller.right_motor.setVelocity(0.0)
-    # Let the stop command process for a few steps
-    for _ in range(50):
-        if Supervisor.step(robot_controller, webots_timestep_duration) == -1:
-            break
-            
-    print("Robot stop command sent. test() finished.")
-    print("Please check the Webots window to see if the robot moved.")
 
 if __name__ == '__main__':
     main()
-    #test()
-
