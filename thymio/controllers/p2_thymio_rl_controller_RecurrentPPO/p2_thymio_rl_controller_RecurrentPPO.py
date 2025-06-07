@@ -146,16 +146,16 @@ class OpenAIGymEnvironment(Supervisor, gym.Env):
 
         if self.reward_config.get("recompensa_movimento", True):
             if distance < 0.01:
-                reward -= 0.5
+                reward -= 5
             else:
                 reward += distance * 10
 
         if self.reward_config.get("penaliza_proximidade", True):
             if max(obs[:5]) > 0.8:
-                reward -= 0.5
+                reward -= 1
 
         if self.reward_config.get("recompensa_base", True):
-            reward += 0.1
+            reward += 1
 
         self.last_position = current_position
         return reward, terminated, info
@@ -315,7 +315,6 @@ def main():
         ent_coef = 0.01
     )
 
-    
 
     print("Vai comecar o treino RPPO")
     try:

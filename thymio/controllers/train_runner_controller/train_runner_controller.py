@@ -1,18 +1,22 @@
 import os
 import sys
-from datetime import datetime
 import logging
+from datetime import datetime
 import torch.nn as nn
 from stable_baselines3 import PPO
 from sb3_contrib import RecurrentPPO
 from stable_baselines3.common.env_util import make_vec_env
-from stable_baselines3.common.vec_env import VecNormalize, DummyVecEnv
+from stable_baselines3.common.vec_env import VecNormalize
 from stable_baselines3.common.callbacks import CheckpointCallback
 
-# 🛠️ Define se queres usar PPO ou RecurrentPPO:
-USE_LSTM = True  # True = RecurrentPPO
+# === CONFIGURAÇÕES DO TREINO ===
+USE_LSTM = False                  # True = RecurrentPPO, False = PPO
+ACTIVATION = nn.ReLU             # nn.ReLU ou nn.Tanh
+RANDOM_OBSTACLES = True          # True = obstáculos aleatórios
+USE_PENALTIES = True             # True = aplicar penalizações
+TOTAL_TIMESTEPS = 100000         # Timesteps de treino
 
-# 🛠️ Corrige o caminho para o import dependendo da escolha
+# === IMPORTAÇÃO DO AMBIENTE ===
 if USE_LSTM:
     sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'p2_thymio_rl_controller_RecurrentPPO'))
     from p2_thymio_rl_controller_RecurrentPPO import OpenAIGymEnvironment
@@ -24,37 +28,46 @@ else:
     model_class = PPO
     policy = 'MlpPolicy'
 
-ACTIVATION = nn.ReLU  # nn.Tanh também é possível
-RANDOM_OBSTACLES = True
-USE_PENALTIES = True
-TOTAL_TIMESTEPS = 100000
-
-# 📁 Preparar pasta de checkpoints e nome base
-suffix = f"{'R' if USE_LSTM else ''}PPO_{'ReLU' if ACTIVATION==nn.ReLU else 'Tanh'}_{'randObs' if RANDOM_OBSTACLES else 'fixedObs'}_{'penalty' if USE_PENALTIES else 'noPenalty'}"
+# === NOMES E PASTAS ===
 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+suffix = f"{'R' if USE_LSTM else ''}PPO_{'ReLU' if ACTIVATION==nn.ReLU else 'Tanh'}_" \
+         f"{'randObs' if RANDOM_OBSTACLES else 'fixedObs'}_" \
+         f"{'penalty' if USE_PENALTIES else 'noPenalty'}"
+
 checkpoint_path = f"./checkpoints/{suffix}_{timestamp}"
 os.makedirs(checkpoint_path, exist_ok=True)
-
-# 🗂️ Configurar logging para ficheiro e consola
 os.makedirs("logs", exist_ok=True)
 log_filename = f"logs/{suffix}_{timestamp}.log"
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='[%(asctime)s] %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler(log_filename),
-        logging.StreamHandler(sys.stdout)
-    ]
-)
+# === LOGGING CONFIGURATION ===
 logger = logging.getLogger()
+logger.setLevel(logging.INFO)
 
-# 📁 Preparar pasta de checkpoints
-suffix = f"{'R' if USE_LSTM else 'P'}PO_{'ReLU' if ACTIVATION==nn.ReLU else 'Tanh'}_{'randObs' if RANDOM_OBSTACLES else 'fixedObs'}_{'penalty' if USE_PENALTIES else 'noPenalty'}"
-checkpoint_path = f"./checkpoints/{suffix}_{timestamp}"
-os.makedirs(checkpoint_path, exist_ok=True)
+for handler in logger.handlers[:]:
+    logger.removeHandler(handler)
 
-# Configurar função de recompensa
+file_handler = logging.FileHandler(log_filename, encoding='cp1252')
+file_handler.setFormatter(logging.Formatter('[%(asctime)s] %(levelname)s - %(message)s'))
+logger.addHandler(file_handler)
+
+console_handler = logging.StreamHandler(sys.__stdout__)
+console_handler.setFormatter(logging.Formatter('[%(asctime)s] %(levelname)s - %(message)s'))
+logger.addHandler(console_handler)
+
+# === REDIRECIONAR stdout/stderr para logger ===
+class StreamToLogger:
+    def __init__(self, logger_func):
+        self.logger_func = logger_func
+    def write(self, message):
+        message = message.strip()
+        if message:
+            self.logger_func(message)
+    def flush(self): pass
+
+sys.stdout = StreamToLogger(logger.info)
+sys.stderr = StreamToLogger(logger.error)
+
+# === CONFIGURAÇÃO DA FUNÇÃO DE RECOMPENSA ===
 reward_config = {
     "penaliza_queda": USE_PENALTIES,
     "penaliza_proximidade": USE_PENALTIES,
@@ -62,21 +75,18 @@ reward_config = {
     "recompensa_base": True
 }
 
-# Função para criar ambiente
+# === CRIAR AMBIENTE ===
 def env_fn():
     return OpenAIGymEnvironment(
         reward_config=reward_config,
         random_obstacles=RANDOM_OBSTACLES
     )
 
-# Criar ambiente vectorizado e normalizado
-# env = DummyVecEnv([env_fn])
 env = make_vec_env(env_fn)
 env = VecNormalize(env, norm_obs=True, norm_reward=True)
-
 env.reset()
 
-# Definir arquitetura e ativação
+# === DEFINIÇÃO DO MODELO ===
 policy_kwargs = dict(
     activation_fn=ACTIVATION,
     net_arch=[64, 32]
@@ -92,20 +102,19 @@ model = model_class(
     policy_kwargs=policy_kwargs
 )
 
-# Callback para guardar checkpoints
 checkpoint = CheckpointCallback(save_freq=10000, save_path=checkpoint_path, name_prefix='thymio')
 
-print(f"🔧 A treinar modelo: {suffix}")
+print(f"Iniciando treino do modelo: {suffix}")
+print(f"Algoritmo: {'RecurrentPPO' if USE_LSTM else 'PPO'} | Ativação: {ACTIVATION.__name__} | "
+      f"Obstáculos: {'Aleatórios' if RANDOM_OBSTACLES else 'Fixos'} | Penalizações: {USE_PENALTIES}")
 
 try:
     model.learn(total_timesteps=TOTAL_TIMESTEPS, callback=[checkpoint])
-    model.save(f"{suffix}_model")
-    env.save(f"{suffix}_vecnormalize")
-    print("✅ Modelo treinado e guardado com sucesso.")
+    model.save(f"{suffix}_{timestamp}_model")
+    env.save(f"{suffix}_{timestamp}_vecnormalize")
+    print("Modelo treinado e guardado com sucesso.")
 
 except KeyboardInterrupt:
-    print("⚠️ Treino interrompido. A guardar modelo...")
-    model.save(f"{suffix}_interrupt")
- 
+    print("Treino interrompido manualmente. A guardar modelo...")
+    model.save(f"{suffix}_{timestamp}_interrupt")
 
- # 

@@ -11,6 +11,7 @@ import time
 import gymnasium as gym
 import numpy as np
 import math
+from torch import nn
 from stable_baselines3.common.callbacks import CheckpointCallback
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.vec_env import VecNormalize
@@ -144,16 +145,16 @@ class OpenAIGymEnvironment(Supervisor, gym.Env):
 
         if self.reward_config.get("recompensa_movimento", True):
             if distance < 0.01:
-                reward -= 0.5
+                reward -= 5
             else:
                 reward += distance * 10
 
         if self.reward_config.get("penaliza_proximidade", True):
             if max(obs[:5]) > 0.8:
-                reward -= 0.5
+                reward -= 1
 
         if self.reward_config.get("recompensa_base", True):
-            reward += 0.1
+            reward += 1
 
         self.last_position = current_position
         return reward, terminated, info
@@ -291,9 +292,15 @@ def main():
 
     env.reset()
 
+    policy_kwargs = dict(
+        activation_fn=nn.ReLU,  # ou nn.Tanh
+        net_arch=[64, 32]       # ou outra arquitetura desejada
+    )
+
     model = PPO(
         'MlpPolicy',
         env,
+        policy_kwargs=policy_kwargs,
         verbose=1,
         device='cpu',
         learning_rate=3e-4, #default
