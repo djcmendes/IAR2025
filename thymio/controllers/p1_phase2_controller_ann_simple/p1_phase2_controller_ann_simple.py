@@ -15,9 +15,9 @@ GENOME_SIZE = (INPUT * HIDDEN) + HIDDEN + (HIDDEN * OUTPUT) + OUTPUT
 GENERATIONS = 300
 MUTATION_RATE = 0.2
 MUTATION_SIZE = 0.05
-EVALUATION_TIME = 300  # seconds
+EVALUATION_TIME = 200  # seconds
 MAX_SPEED = 6.28
-BASE_SPEED = 1.0  # always forward
+BASE_SPEED = 2.0  # always forward
 
 def random_orientation():
     angle = np.random.uniform(0, 2 * np.pi)
@@ -127,6 +127,9 @@ class Evolution:
         left_speed = BASE_SPEED + output[0] * (MAX_SPEED - BASE_SPEED)
         right_speed = BASE_SPEED + output[1] * (MAX_SPEED - BASE_SPEED)
 
+        #if self.step_count % 100 == 0:
+        #    print (f" leftspeed: {left_speed}, right_speed: {right_speed}")
+
         self.left_motor.setVelocity(max(min(left_speed, MAX_SPEED), 0))
         self.right_motor.setVelocity(max(min(right_speed, MAX_SPEED), 0))
 
@@ -150,11 +153,10 @@ class Evolution:
 
                     fitness = self.time_in_line / EVALUATION_TIME
                     if fitness > 14.0:
-                        print(f" - Invalid fitness {fitness:.2f} > 10 - setting to 0")
+                        print(f" - Invalid fitness {fitness:.2f} > 14 - setting to 0")
                         fitness = 0.0
                     else:
                         print(f" - Fitness: {fitness:.4f}")
-                    print(f" - Fitness: {fitness:.4f}")
 
                     individual['fitness'] = fitness
 
@@ -178,7 +180,8 @@ class Evolution:
                     child2 = {'genome': self.mutate(child2_genome), 'fitness': 0}
                     new_population.extend([child1, child2])
 
-                self.population = new_population[:POPULATION_SIZE]
+                best_individual = max(self.population, key=lambda ind: ind['fitness']) # elitism
+                self.population = [best_individual] + new_population[:POPULATION_SIZE-1]
 
         except KeyboardInterrupt:
             print("\nSimulation interrupted!")

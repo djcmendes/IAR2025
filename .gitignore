@@ -1308,3 +1308,4 @@ cython_debug/
 # PyPI configuration file
 .pypirc
 .DS_Store
+thymio/controllers/p1_phase2_controller_ann_simple/fitness_history_ANN_plot.png
