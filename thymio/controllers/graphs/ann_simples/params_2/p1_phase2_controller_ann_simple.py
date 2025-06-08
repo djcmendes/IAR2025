@@ -154,12 +154,9 @@ class Evolution:
                         self.run_step(individual['genome'])
 
                     fitness = self.time_in_line / EVALUATION_TIME
-                    if gen < 150: # para nao aprender a se virar ao contrario
-                        if fitness > 14.0:
-                            print(f" - Invalid fitness {fitness:.2f} > 14 - setting to 0")
-                            fitness = 0.0
-                        else:
-                            print(f" - Fitness: {fitness:.4f}")
+                    if fitness > 14.0:
+                        print(f" - Invalid fitness {fitness:.2f} > 14 - setting to 0")
+                        fitness = 0.0
                     else:
                         print(f" - Fitness: {fitness:.4f}")
 
