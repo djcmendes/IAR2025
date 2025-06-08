@@ -153,9 +153,11 @@ class Evolution:
                     while (self.supervisor.getTime() - self.evaluation_start_time < EVALUATION_TIME):
                         self.run_step(individual['genome'])
 
+                    old_avg_fitness = sum(ind['fitness'] for ind in self.population) / POPULATION_SIZE
+                    # print(f"old avg: {old_avg_fitness}")
                     fitness = self.time_in_line / EVALUATION_TIME
-                    if fitness > 14.0:
-                        print(f" - Invalid fitness {fitness:.2f} > 14 - setting to 0")
+                    if fitness > old_avg_fitness + 9:
+                        print(f" - Invalid fitness {fitness:.2f} > {old_avg_fitness:.2f} + 9: setting to 0")
                         fitness = 0.0
                     else:
                         print(f" - Fitness: {fitness:.4f}")

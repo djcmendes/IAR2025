@@ -145,24 +145,36 @@ class Evolution:
                 print(f"\n=== Generation {gen + 1}/{GENERATIONS} ===")
                 
                 for idx, individual in enumerate(self.population):
-                    self.reset()
-                    self.evaluation_start_time = self.supervisor.getTime()
-
-                    print(f"  Individual {idx+1}/{POPULATION_SIZE}", end="", flush=True)
-
-                    while (self.supervisor.getTime() - self.evaluation_start_time < EVALUATION_TIME):
-                        self.run_step(individual['genome'])
-
-                    old_avg_fitness = sum(ind['fitness'] for ind in self.population) / POPULATION_SIZE
-                    # print(f" old avg: {old_avg_fitness} ", end ="")
-                    fitness = self.time_in_line / EVALUATION_TIME
-                    if fitness > old_avg_fitness + 9:
-                        print(f" - Invalid fitness {fitness:.4f} > {old_avg_fitness:.4f} + 9: setting to 0")
-                        fitness = 0.0
-                    else:
-                        print(f" - Fitness: {fitness:.4f}")
-
-                    individual['fitness'] = fitness
+                    fitness_runs = []  # Store fitness for each run
+                    
+                    for run_num in range(3):  # Perform 3 runs per individual
+                        self.reset()
+                        self.evaluation_start_time = self.supervisor.getTime()
+                        
+                        print(f"\r  Individual {idx+1}/{POPULATION_SIZE} - Run {run_num+1}/3", 
+                              end="", flush=True)
+                        
+                        # Reset run-specific metrics
+                        self.time_in_line = 0
+                        
+                        # Run simulation for EVALUATION_TIME
+                        while (self.supervisor.getTime() - self.evaluation_start_time < EVALUATION_TIME):
+                            self.run_step(individual['genome'])
+                            
+                        # Calculate fitness for this run
+                        fitness_run = self.time_in_line / EVALUATION_TIME
+                        old_avg_fitness = sum(ind['fitness'] for ind in self.population) / POPULATION_SIZE
+                        # print(f" old avg: {old_avg_fitness} ", end ="")
+                        fitness_run = self.time_in_line / EVALUATION_TIME
+                        if fitness_run > old_avg_fitness + 9:
+                            print(f" - Invalid fitness_run {fitness_run:.4f} > {old_avg_fitness:.4f} + 9: setting to 0 ", end = "")
+                            fitness_run = 0.0
+                        fitness_runs.append(fitness_run)
+                    
+                    # Calculate average fitness across 3 runs
+                    avg_fitness = sum(fitness_runs) / len(fitness_runs)
+                    individual['fitness'] = avg_fitness
+                    print(f" - Avg Fitness: {avg_fitness:.4f} (Runs: {fitness_runs})")
 
                 avg_fitness = sum(ind['fitness'] for ind in self.population) / POPULATION_SIZE
                 self.fitness_history.append(avg_fitness)
