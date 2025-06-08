@@ -83,6 +83,10 @@ class Evolution:
         
 
     def reset(self, seed=None, options=None):
+        self.robot_node.resetPhysics()
+        self.left_motor.setPosition(float('inf'))
+        self.right_motor.setPosition(float('inf'))
+
         self.time_in_line = 0
         # self.__n = 0
         random_rotation = [0, 0, 1, np.random.uniform(0, 2 * np.pi)]

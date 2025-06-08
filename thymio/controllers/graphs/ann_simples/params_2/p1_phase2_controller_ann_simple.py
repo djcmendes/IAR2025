@@ -6,18 +6,18 @@ import csv
 
 # Simulation parameters
 TIME_STEP = 64
-POPULATION_SIZE = 8
+POPULATION_SIZE = 10
 PARENTS_KEEP = 3
 INPUT = 2
 HIDDEN = 4
 OUTPUT = 2
 GENOME_SIZE = (INPUT * HIDDEN) + HIDDEN + (HIDDEN * OUTPUT) + OUTPUT
-GENERATIONS = 3000
-MUTATION_RATE = 0.05
-MUTATION_SIZE = 0.1
+GENERATIONS = 300
+MUTATION_RATE = 0.2
+MUTATION_SIZE = 0.05
 EVALUATION_TIME = 200  # seconds
 MAX_SPEED = 6.28
-BASE_SPEED = 3.0  # always forward
+BASE_SPEED = 2.0  # always forward
 
 def random_orientation():
     angle = np.random.uniform(0, 2 * np.pi)

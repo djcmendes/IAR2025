@@ -12,7 +12,7 @@ INPUT = 5
 HIDDEN = 4
 OUTPUT = 2
 GENOME_SIZE = (1+INPUT)*HIDDEN  + (HIDDEN+1)*OUTPUT
-GENERATIONS = 300
+GENERATIONS = 3000
 MUTATION_RATE = 0.2
 MUTATION_SIZE = 0.05
 EVALUATION_TIME = 300  # Simulated seconds per individual
@@ -85,6 +85,10 @@ class Evolution:
         
 
     def reset(self, seed=None, options=None):
+        self.robot_node.resetPhysics()
+        self.left_motor.setPosition(float('inf'))
+        self.right_motor.setPosition(float('inf'))
+
         self.time_in_line = 0
         # self.__n = 0
         random_rotation = [0, 0, 1, np.random.uniform(0, 2 * np.pi)]
