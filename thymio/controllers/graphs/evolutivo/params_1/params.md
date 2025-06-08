@@ -1,0 +1,12 @@
+
+# Simulation parameters
+TIME_STEP = 64
+POPULATION_SIZE = 10
+PARENTS_KEEP = 3
+INPUT = 5
+OUTPUT = 2
+GENERATIONS = 300
+MUTATION_RATE = 0.2
+MUTATION_SIZE = 0.05
+EVALUATION_TIME = 300  # Simulated seconds per individual
+RANGE = 5
