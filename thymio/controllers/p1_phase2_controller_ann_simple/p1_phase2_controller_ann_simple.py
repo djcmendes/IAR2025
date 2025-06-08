@@ -6,7 +6,7 @@ import csv
 
 # Simulation parameters
 TIME_STEP = 64
-POPULATION_SIZE = 10
+POPULATION_SIZE = 6
 PARENTS_KEEP = 3
 INPUT = 2
 HIDDEN = 4
