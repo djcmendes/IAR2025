@@ -1,40 +1,34 @@
 import os
 import sys
 import logging
-from controller import Supervisor
 from datetime import datetime
 import torch.nn as nn
 from stable_baselines3 import PPO
 from sb3_contrib import RecurrentPPO
 from stable_baselines3.common.env_util import make_vec_env
 from stable_baselines3.common.vec_env import VecNormalize
-from stable_baselines3.common.callbacks import CheckpointCallback,EvalCallback
+from stable_baselines3.common.callbacks import CheckpointCallback
 
-
-# Adiciona os paths relativos aos controladores
-base_dir = os.path.dirname(os.path.abspath(__file__))
-sys.path.append(os.path.join(base_dir, '..', 'p2_thymio_rl_controller_PPO'))
-sys.path.append(os.path.join(base_dir, '..', 'p2_thymio_rl_controller_RecurrentPPO'))
-
-
-# === CONFIGURAÇÕES POR VARIÁVEIS DE AMBIENTE ===
-USE_LSTM = os.getenv("USE_LSTM", "0") == "1"
-ACTIVATION = nn.ReLU if os.getenv("ACTIVATION", "relu") == "relu" else nn.Tanh
-USE_PENALTIES = os.getenv("USE_PENALTIES", "1") == "1"
-RANDOM_OBSTACLES = os.getenv("RANDOM_OBSTACLES", "1") == "1"
-TOTAL_TIMESTEPS = int(os.getenv("TOTAL_TIMESTEPS", 10000))
+# === CONFIGURAÇÕES DO TREINO ===
+USE_LSTM = False                  # True = RecurrentPPO, False = PPO
+ACTIVATION = nn.ReLU            # nn.ReLU ou nn.Tanh
+RANDOM_OBSTACLES = True          # True = obstáculos aleatórios
+USE_PENALTIES = True             # True = aplicar penalizações
+TOTAL_TIMESTEPS = 300000         # Timesteps de treino
 
 # === IMPORTAÇÃO DO AMBIENTE ===
 if USE_LSTM:
+    sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'p2_thymio_rl_controller_RecurrentPPO'))
     from p2_thymio_rl_controller_RecurrentPPO import OpenAIGymEnvironment
     model_class = RecurrentPPO
     policy = 'MlpLstmPolicy'
 else:
+    sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'p2_thymio_rl_controller_PPO'))
     from p2_thymio_rl_controller_PPO import OpenAIGymEnvironment
     model_class = PPO
     policy = 'MlpPolicy'
 
-# === NOMES E LOGGING ===
+# === NOMES E PASTAS ===
 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 suffix = f"{'R' if USE_LSTM else ''}PPO_{'ReLU' if ACTIVATION==nn.ReLU else 'Tanh'}_" \
          f"{'randObs' if RANDOM_OBSTACLES else 'fixedObs'}_" \
@@ -42,12 +36,13 @@ suffix = f"{'R' if USE_LSTM else ''}PPO_{'ReLU' if ACTIVATION==nn.ReLU else 'Tan
 
 checkpoint_path = f"./checkpoints/{suffix}_{timestamp}"
 os.makedirs(checkpoint_path, exist_ok=True)
-os.makedirs("logs_treino", exist_ok=True)
-log_filename = f"logs_treino/{suffix}_{timestamp}.log"
+os.makedirs("logs", exist_ok=True)
+log_filename = f"logs/{suffix}_{timestamp}.log"
 
-# === LOGGING ===
+# === LOGGING CONFIGURATION ===
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
+
 for handler in logger.handlers[:]:
     logger.removeHandler(handler)
 
@@ -59,6 +54,7 @@ console_handler = logging.StreamHandler(sys.__stdout__)
 console_handler.setFormatter(logging.Formatter('[%(asctime)s] %(levelname)s - %(message)s'))
 logger.addHandler(console_handler)
 
+# === REDIRECIONAR stdout/stderr para logger ===
 class StreamToLogger:
     def __init__(self, logger_func):
         self.logger_func = logger_func
@@ -79,6 +75,7 @@ reward_config = {
     "recompensa_base": True
 }
 
+# === CRIAR AMBIENTE ===
 def env_fn():
     return OpenAIGymEnvironment(
         reward_config=reward_config,
@@ -89,6 +86,7 @@ env = make_vec_env(env_fn)
 env = VecNormalize(env, norm_obs=True, norm_reward=True)
 env.reset()
 
+# === DEFINIÇÃO DO MODELO ===
 policy_kwargs = dict(
     activation_fn=ACTIVATION,
     net_arch=[64, 32]
@@ -111,22 +109,12 @@ print(f"Algoritmo: {'RecurrentPPO' if USE_LSTM else 'PPO'} | Ativação: {ACTIVA
       f"Obstáculos: {'Aleatórios' if RANDOM_OBSTACLES else 'Fixos'} | Penalizações: {USE_PENALTIES}")
 
 try:
-
     model.learn(total_timesteps=TOTAL_TIMESTEPS, callback=[checkpoint])
-    # Criar pasta de modelos
-    models_path = os.path.join("models")
-    os.makedirs(models_path, exist_ok=True)
-
-    model_filename = f"{suffix}_{timestamp}_model"
-    vecnorm_filename = f"{suffix}_{timestamp}_vecnormalize.pkl"
-
-    model.save(os.path.join(models_path, model_filename))
-    env.save(os.path.join(models_path, vecnorm_filename))
-
+    model.save(f"{suffix}_{timestamp}_model")
+    env.save(f"{suffix}_{timestamp}_vecnormalize")
     print("Modelo treinado e guardado com sucesso.")
-
-    Supervisor().simulationQuit(0)
 
 except KeyboardInterrupt:
     print("Treino interrompido manualmente. A guardar modelo...")
     model.save(f"{suffix}_{timestamp}_interrupt")
+

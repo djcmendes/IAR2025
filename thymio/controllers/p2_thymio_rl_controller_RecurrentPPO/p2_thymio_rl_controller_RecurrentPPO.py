@@ -12,6 +12,7 @@ import time
 import gymnasium as gym
 import numpy as np
 import math
+from torch import nn
 from stable_baselines3.common.evaluation import evaluate_policy
 from stable_baselines3.common.callbacks import CheckpointCallback, BaseCallback
 from stable_baselines3.common.env_util import make_vec_env
@@ -128,37 +129,86 @@ class OpenAIGymEnvironment(Supervisor, gym.Env):
         info = {}
 
         current_position = self.robot_node.getField("translation").getSFVec3f()
-        min_ground = min(obs[5:])  # Ground sensors
+        min_ground = min(obs[5:])  # Sensores de chão
 
-        if self.reward_config.get("penaliza_queda", True) and min_ground < 0.7:
-            reward -= 10
+        # ----- Queda (Z muito baixo ou buraco no chão) -----
+        if self.reward_config.get("penaliza_queda", True):
+            if min_ground < 0.6 or current_position[2] < (self.init_translation_field[2] - 0.1):
+                reward -= 100
+                terminated = True
+                info['fall'] = True
+                info['termination_reason'] = 'fall'
+                return reward, terminated, info
 
-        # Verificar queda real (Z abaixo do permitido)
-        if current_position[2] < (self.init_translation_field[2] - 0.1):
-            terminated = True
-            info['fall'] = True
-            info['termination_reason'] = 'fall'
-            return reward, terminated, info
-
+        # ----- Distância percorrida (reforço positivo) -----
         dx = current_position[0] - self.last_position[0]
         dy = current_position[1] - self.last_position[1]
         distance = math.sqrt(dx ** 2 + dy ** 2)
 
         if self.reward_config.get("recompensa_movimento", True):
-            if distance < 0.01:
+            reward += distance * 20  # mais forte que antes
+
+        # Penalização por ficar parado muito tempo
+        self.no_move_counter = getattr(self, 'no_move_counter', 0)
+        if distance < 0.005:
+            self.no_move_counter += 1
+            if self.no_move_counter > 5:
                 reward -= 5
-            else:
-                reward += distance * 10
+        else:
+            self.no_move_counter = 0
 
+        # ----- Penalização progressiva por proximidade de obstáculos -----
         if self.reward_config.get("penaliza_proximidade", True):
-            if max(obs[:5]) > 0.8:
-                reward -= 1
+            prox_penalty = sum([max(0, v - 0.5) for v in obs[:5]])  # penaliza a partir de 0.5
+            reward -= prox_penalty * 10  # penalização proporcional
 
+        # ----- Bónus por “sobrevivência” -----
         if self.reward_config.get("recompensa_base", True):
-            reward += 1
+            reward += 0.5  # pequena recompensa constante por continuar sem falhar
+
+        # ----- (Opcional) Exploração: novo espaço visitado -----
+        # Podes implementar grid de células visitadas aqui para bónus adicional
 
         self.last_position = current_position
         return reward, terminated, info
+
+    # def _compute_reward(self, obs, action):
+    #     reward = 0.0
+    #     terminated = False
+    #     info = {}
+
+    #     current_position = self.robot_node.getField("translation").getSFVec3f()
+    #     min_ground = min(obs[5:])  # Ground sensors
+
+    #     if self.reward_config.get("penaliza_queda", True) and min_ground < 0.7:
+    #         reward -= 10
+
+    #     # Verificar queda real (Z abaixo do permitido)
+    #     if current_position[2] < (self.init_translation_field[2] - 0.1):
+    #         terminated = True
+    #         info['fall'] = True
+    #         info['termination_reason'] = 'fall'
+    #         return reward, terminated, info
+
+    #     dx = current_position[0] - self.last_position[0]
+    #     dy = current_position[1] - self.last_position[1]
+    #     distance = math.sqrt(dx ** 2 + dy ** 2)
+
+    #     if self.reward_config.get("recompensa_movimento", True):
+    #         if distance < 0.01:
+    #             reward -= 5
+    #         else:
+    #             reward += distance * 10
+
+    #     if self.reward_config.get("penaliza_proximidade", True):
+    #         if max(obs[:5]) > 0.8:
+    #             reward -= 1
+
+    #     if self.reward_config.get("recompensa_base", True):
+    #         reward += 1
+
+    #     self.last_position = current_position
+    #     return reward, terminated, info
 
     def _randomize_obstacles(self):
         if not self.random_obstacles:
@@ -274,6 +324,7 @@ class OpenAIGymEnvironment(Supervisor, gym.Env):
 
         truncated = self.__n >= self.max_episode_steps
         if truncated:
+            reward += 200
             info['truncated'] = True
 
         return self.state.astype(np.float32), reward, terminated, truncated, info
@@ -306,10 +357,18 @@ def main():
 
     env.reset()
 
+    policy_kwargs = dict(
+        activation_fn=nn.ReLU,  # ou nn.Tanh
+        net_arch=[64, 32]       # ou outra arquitetura desejada
+    )
+
+    # policy_kwargs = dict(activation_fn=nn.ReLU,net_arch=dict(pi=[64, 32], vf=[64, 32]))
+
     model = RecurrentPPO(
         'MlpLstmPolicy',
         env,
         verbose=1,
+        policy_kwargs=policy_kwargs,
         device='cpu', #default
         learning_rate=3e-4, #default
         ent_coef = 0.01
@@ -318,14 +377,16 @@ def main():
 
     print("Vai comecar o treino RPPO")
     try:
-        model.learn(total_timesteps=200000, callback=checkpoint)
-
-        # mean_reward, std_reward = evaluate_policy(model, vec_env, n_eval_episodes=20, warn=False)
-        # print(mean_reward)
+        model.learn(total_timesteps=300000, callback=checkpoint)
 
         model.save("r_ppo_thymio_distancia_percorrida")
         env.save("r_ppo_thymio_distancia_percorrida.vecnormalize")  # <- Adiciona esta linha
         print("Treino concluído e modelo guardado com sucesso.")
+    finally:
+        # Always ensure the environment is closed, even if errors occur
+        if env is not None:
+            env.close()
+            print("Environment closed.")
 
     except KeyboardInterrupt:
         print("Treino interrompido. A guardar modelo...")
