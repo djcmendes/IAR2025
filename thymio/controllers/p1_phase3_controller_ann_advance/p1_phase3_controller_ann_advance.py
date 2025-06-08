@@ -7,18 +7,19 @@ import os
 
 # Simulation parameters
 TIME_STEP = 64
-POPULATION_SIZE = 10
-PARENTS_KEEP = 3
+POPULATION_SIZE = 30
+PARENTS_KEEP = 4
 INPUT = 5 # 2 ground + 3 proximity
 HIDDEN = 4
 OUTPUT = 2
 GENOME_SIZE = (INPUT * HIDDEN) + HIDDEN + (HIDDEN * OUTPUT) + OUTPUT
-GENERATIONS = 1
+GENERATIONS = 300
 MUTATION_RATE = 0.2
 MUTATION_SIZE = 0.05
-EVALUATION_TIME = 10  # Simulated seconds per individual
+EVALUATION_TIME = 300  # segundos
 MAX_SPEED = 6.28
-BASE_SPEED = 3.0  # Minimal always-forward motion
+BASE_SPEED = 3.0  # sempre para a frente
+
 
 def random_orientation():
     angle = np.random.uniform(0, 2 * np.pi)
@@ -44,6 +45,11 @@ class Evolution:
         self.evaluation_start_time = 0
         self.collision = False
         self.step_count = 0
+        
+        # NOVAS VARIÁVEIS para fitness baseado em distância
+        self.fitness_score = 0.0
+        self.last_position = None
+        
         self.time_in_line = 0
         self.time_walking = 0
         self.time_without_collision = 0
@@ -155,6 +161,9 @@ class Evolution:
         self.robot_node.resetPhysics()
         self.left_motor.setPosition(float('inf'))
         self.right_motor.setPosition(float('inf'))
+        
+        # ZERA AS VARIÁVEIS de avaliação para cada indivíduo
+        self.fitness_score = 0.0
 
         self.time_in_line = 0
         self.time_without_collision = 0
@@ -168,6 +177,10 @@ class Evolution:
         self.rotation_field.setSFRotation(random_rotation)
         pos = random_position(-1, 1, 0.05)
         self.translation_field.setSFVec3f(pos)
+
+        # GARANTE que a posição é atualizada antes de começar
+        self.supervisor.step(0)
+        self.last_position = self.translation_field.getSFVec3f()
 
         self.left_motor.setVelocity(0)
         self.right_motor.setVelocity(0)
@@ -193,13 +206,13 @@ class Evolution:
 
     def decode_genome(self, genome):
         idx = 0
-        W1 = np.array(genome[idx:idx+INPUT*HIDDEN]).reshape(INPUT, HIDDEN)
-        idx += INPUT*HIDDEN
-        b1 = np.array(genome[idx:idx+HIDDEN])
+        W1 = np.array(genome[idx:idx + INPUT * HIDDEN]).reshape(INPUT, HIDDEN)
+        idx += INPUT * HIDDEN
+        b1 = np.array(genome[idx:idx + HIDDEN])
         idx += HIDDEN
-        W2 = np.array(genome[idx:idx+HIDDEN*OUTPUT]).reshape(HIDDEN, OUTPUT)
-        idx += HIDDEN*OUTPUT
-        b2 = np.array(genome[idx:idx+OUTPUT])
+        W2 = np.array(genome[idx:idx + HIDDEN * OUTPUT]).reshape(HIDDEN, OUTPUT)
+        idx += HIDDEN * OUTPUT
+        b2 = np.array(genome[idx:idx + OUTPUT])
         return W1, b1, W2, b2
 
     def run_step(self, genome):
@@ -221,19 +234,21 @@ class Evolution:
         if self.collision:
             self.actual_collision += 1
 
+        # 1. Verifica se o robô está na linha (assumindo linha branca/clara)
+        # A lógica `> 0.3` provavelmente detecta o chão escuro (fora da linha)
+        is_off_line_left = (self.ground_sensors[0].getValue() / 1023 - 0.6) / 0.2 > 0.3
+        is_off_line_right = (self.ground_sensors[1].getValue() / 1023 - 0.6) / 0.2 > 0.3
+
+        reward_multiplier = 0.0
+        if not is_off_line_left and not is_off_line_right:
+            reward_multiplier = 50.0  # Recompensa máxima por estar centrado
+        elif not is_off_line_left or not is_off_line_right:
+            reward_multiplier = 40.0  # Recompensa parcial para incentivar a correção
+
+        # 2. Roda a rede neural para obter a velocidade dos motores
         ground_sensor_values = [((s.getValue() / 1023.0) - 0.5) * 2 for s in self.ground_sensors]
 
-        ground_sensor_left = (self.ground_sensors[0].getValue()/1023 - 0.6)/0.2 > 0.3
-        ground_sensor_right = (self.ground_sensors[1].getValue()/1023 - 0.6)/0.2 > 0.3
-        
         prox_sensor_values = [p.getValue() / 4300 for p in self.prox_sensors]
-        # Corrected condition order
-        if not ground_sensor_left and not ground_sensor_right:
-            self.time_in_line += 50  # Higher reward for centered
-        elif not ground_sensor_left or not ground_sensor_right:
-            self.time_in_line += 40   # Lower reward for partial contact
-        else:
-            self.time_in_line -= 1
 
         # Considera colisão se algum sensor de proximidade estiver muito ativo
         proximity_sensor_values = [p.getValue() for p in self.prox_sensors]
@@ -245,9 +260,9 @@ class Evolution:
             self.time_without_collision += -10
             #average_speed = 0
         elif not any(value > 3000 for value in proximity_sensor_values):
-            self.time_without_collision += 5
+            self.time_without_collision += 2.0
         elif not any((4000 < value < 3000) for value in proximity_sensor_values): # Se nenhum sensor está acima de 4300
-            self.time_without_collision += 1
+            self.time_without_collision += 1.0
 
         # Decode genome into neural network weights
         W1, b1, W2, b2 = self.decode_genome(genome)
@@ -265,7 +280,16 @@ class Evolution:
         self.left_motor.setVelocity(max(min(left_speed, MAX_SPEED), 0))
         self.right_motor.setVelocity(max(min(right_speed, MAX_SPEED), 0))
 
+        # 3. Avança a simulação
         self.supervisor.step(self.timestep)
+
+        # 4. Calcula a distância percorrida neste passo
+        current_position = self.translation_field.getSFVec3f()
+        delta_distance = np.linalg.norm(np.array(current_position) - np.array(self.last_position))
+        self.last_position = current_position
+
+        # 5. Adiciona à pontuação de fitness (distância * recompensa por estar na linha)
+        self.fitness_score += delta_distance * reward_multiplier
 
     def run(self):
         start_gen = len(self.fitness_history)
@@ -282,10 +306,13 @@ class Evolution:
 
                     while (self.supervisor.getTime() - self.evaluation_start_time) < EVALUATION_TIME:
                         self.run_step(individual['genome'])
-                        total_steps += 1
+                        total_steps += 1                   
 
-                    line_fitness = (self.time_in_line / EVALUATION_TIME)
                     collisions_fitness = (self.time_without_collision / EVALUATION_TIME)
+                    
+                    # A pontuação de fitness agora é a distância total percorrida na linha
+                    fitness = self.fitness_score + collisions_fitness
+                    #print(f" - Fitness: {fitness:.4f}", flush=True)
 
                     #score_collision    = self.time_without_collision / total_steps
                     #score_time_in_line = self.time_in_line / total_steps
@@ -299,8 +326,7 @@ class Evolution:
 
                     #fitness = min(1.0, max(0.0, fitness))
 
-                    individual['fitness'] = line_fitness + collisions_fitness
-                    print(f"{idx} Fitness: {individual['fitness']:.2f}", flush=True)
+                    individual['fitness'] = fitness
                     """
                     individual['score_time_in_line'] = score_time_in_line
                     individual['score_collision'] = score_collision
@@ -340,12 +366,12 @@ class Evolution:
                 avg = sum(ind['score_time_walking'] for ind in self.population) / POPULATION_SIZE
                 self.score_time_walking_history.append(avg)
                 print(f"Average score_time_walking: {avg:.4f}")
-                """
+                
                 # Calculate and store average fitness
                 avg = sum(ind['collision_sensor'] for ind in self.population) / POPULATION_SIZE
                 self.collision_sensor_history.append(avg)
                 print(f"Average collisions sensor (Detected): {avg}") # actual means check every sensor for collision
-
+                """
                 # Calculate and store average fitness
                 avg = sum(ind['collisions'] for ind in self.population) / POPULATION_SIZE
                 self.collisions_history.append(avg)
@@ -354,7 +380,7 @@ class Evolution:
                 self.genome_history.append([ind['genome'] for ind in self.population])
 
                 # Save fitness history to CSV
-                with open("../../../data/fitness_history_ANN_advanced.csv", "w", newline="") as f:
+                with open("../../../data/fitness_history_ANN_advanced_4n.csv", "w", newline="") as f:
                     writer = csv.writer(f)
                     writer.writerow([
                         "Generation",
@@ -362,7 +388,7 @@ class Evolution:
                         #"AverageTimeInLineScore",
                         #"AverageCollisionScore",
                         #"AverageTimeWalkingScore",
-                        "AverageDetectedCollisions",
+                        #"AverageDetectedCollisions",
                         "AverageActualCollisions",
                         "genome"
                     ])
@@ -373,7 +399,7 @@ class Evolution:
                             #self.score_time_in_line_history[i],
                             #self.score_collision_history[i],
                             #self.score_time_walking_history[i],
-                            self.collision_sensor_history[i],
+                            #self.collision_sensor_history[i],
                             self.collisions_history[i],
                             self.genome_history[i]
                         ])
@@ -382,34 +408,24 @@ class Evolution:
                 parents = self.select_parents()
                 new_population = parents.copy()
 
-                # elitimo keep 1 best
-                ind_validos = [ind for ind in self.population if ind['fitness'] > 0.2]
-                # Se houver algum, pega o melhor entre eles
-                best_individual = None
-                if ind_validos:
-                    best_individual = max(ind_validos, key=lambda ind: ind['fitness'])
+                # Elitismo: o melhor indivíduo vai diretamente para a próxima geração
+                best_individual = max(self.population, key=lambda ind: ind['fitness'])
+                new_population = [best_individual]
 
-                # Breed new population
+                # Preenche o resto da população com filhos
                 while len(new_population) < POPULATION_SIZE:
                     parent1, parent2 = random.sample(parents, 2)
-                    child1_genome, child2_genome = self.crossover(
-                        parent1['genome'], parent2['genome'])
+                    child1_genome, child2_genome = self.crossover(parent1['genome'], parent2['genome'])
 
-                    child1 = {
-                        'genome': self.mutate(child1_genome),
-                        'fitness': 0
-                    }
-                    child2 = {
-                        'genome': self.mutate(child2_genome),
-                        'fitness': 0
-                    }
-                    new_population.extend([child1, child2])
+                    # Garante que não exceda o tamanho da população se for ímpar
+                    if len(new_population) < POPULATION_SIZE:
+                        child1 = {'genome': self.mutate(child1_genome), 'fitness': 0}
+                        new_population.append(child1)
+                    if len(new_population) < POPULATION_SIZE:
+                        child2 = {'genome': self.mutate(child2_genome), 'fitness': 0}
+                        new_population.append(child2)
 
-                if best_individual:
-                    self.population = [best_individual] + new_population[:POPULATION_SIZE - 1]
-                else:
-                    self.population = new_population[:POPULATION_SIZE]
-
+                self.population = new_population
 
         except KeyboardInterrupt:
             print("\nSimulation interrupted!")
@@ -433,18 +449,18 @@ class Evolution:
                     #time_in_line_scores=time_in_line_scores,
                     #collision_scores=collision_scores,
                     #time_in_walking_scores=time_walking_scores,
-                    collisions_sensor=collisions_sensor,
+                    #collisions_sensor=collisions_sensor,
                     collisions=collisions,
-                    
+
                     #score_time_in_line_history = self.score_time_in_line_history,
                     #score_collision_history = self.score_collision_history,
                     #score_time_walking=self.score_time_walking_history,
-                    collisions_sensor_history = self.collision_sensor_history,
+                    #collisions_sensor_history = self.collision_sensor_history,
                     collisions_history = self.collisions_history,
                 )
 
                 print(f"Population saved to {filename}")
-                print(f"Fitness history saved to fitness_history_ANN.csv")
+                print(f"Fitness history saved to fitness_history_ANN_4n.csv")
 
 def main():
     controller = Evolution()
