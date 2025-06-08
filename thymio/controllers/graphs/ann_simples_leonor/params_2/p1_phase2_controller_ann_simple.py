@@ -1,32 +1,31 @@
 import numpy as np
 from controller import Supervisor
 import random
-import math
 import csv
 
-# Parâmetros da Simulação
+# --- PARÂMETROS DO ALGORITMO GENÉTICO (AGRESSIVOS) ---
 TIME_STEP = 64
-POPULATION_SIZE = 30
-PARENTS_KEEP = 4
+POPULATION_SIZE = 10  # Usando o seu valor mais recente
+PARENTS_KEEP = 2      # O número de indivíduos de elite que sobrevivem diretamente
+GENERATIONS = 300
+MUTATION_RATE = 0.10  # Taxa de mutação mais alta para exploração
+MUTATION_SIZE = 0.2   # Tamanho de mutação maior para saltos mais largos
+
+# --- ARQUITETURA DA REDE (CONFORME ESPECIFICADO) ---
 INPUT = 2
 HIDDEN = 4
 OUTPUT = 2
-GENOME_SIZE = (INPUT * HIDDEN) + HIDDEN + (HIDDEN * OUTPUT) + OUTPUT
-GENERATIONS = 3000
-EVALUATION_TIME = 200  # segundos
+GENOME_SIZE = (INPUT * HIDDEN) + HIDDEN + (HIDDEN * OUTPUT) + OUTPUT # = 22
+
+# --- PARÂMETROS DA SIMULAÇÃO ---
+EVALUATION_TIME = 200
 MAX_SPEED = 6.28
 BASE_SPEED = 3.0
 
-# --- PARÂMETROS DE MUTAÇÃO ADAPTATIVA ---
-# Começa com valores altos para incentivar a exploração
-INITIAL_MUTATION_RATE = 0.25
-INITIAL_MUTATION_SIZE = 0.5
-# Termina com valores baixos para permitir o refinamento
-FINAL_MUTATION_RATE = 0.05
-FINAL_MUTATION_SIZE = 0.1
-# Percentagem de gerações durante a qual a mutação diminui
-MUTATION_DECAY_FACTOR = 0.75 
-MUTATION_DECAY_GENERATIONS = int(GENERATIONS * MUTATION_DECAY_FACTOR)
+# --- PARÂMETROS PARA FITNESS ADAPTATIVO (ANNEALING) ---
+INITIAL_BONUS_MAXIMO = 15.0 
+FINAL_BONUS_MAXIMO = 1.0    
+BONUS_DECAY_GENERATIONS = int(GENERATIONS * 0.8)
 
 def random_orientation():
     angle = np.random.uniform(0, 2 * np.pi)
@@ -45,7 +44,6 @@ class Evolution:
         self.evaluation_start_time = 0
         self.step_count = 0
         
-        # Variáveis para a função de fitness moldada
         self.fitness_score = 0.0
         self.last_position = None
         self.found_line = False
@@ -75,13 +73,11 @@ class Evolution:
         self.left_motor.setPosition(float('inf'))
         self.right_motor.setPosition(float('inf'))
 
-        # Zera as variáveis de avaliação
         self.fitness_score = 0.0
         self.step_count = 0
         self.found_line = False
         self.time_first_contact = 0.0
 
-        # Posição e rotação aleatórias
         random_rotation = [0, 0, 1, np.random.uniform(0, 2 * np.pi)]
         self.rotation_field.setSFRotation(random_rotation)
         pos = random_position(-1, 1, 0.05)
@@ -104,11 +100,10 @@ class Evolution:
         child2 = np.concatenate([parent2[:point], parent1[point:]])
         return child1, child2
 
-    # A função de mutação agora aceita os parâmetros atuais
-    def mutate(self, genome, mutation_rate, mutation_size):
+    def mutate(self, genome):
         for i in range(len(genome)):
-            if random.random() < mutation_rate:
-                genome[i] += np.random.normal(0, mutation_size)
+            if random.random() < MUTATION_RATE:
+                genome[i] += np.random.normal(0, MUTATION_SIZE)
         return genome
 
     def decode_genome(self, genome):
@@ -124,7 +119,6 @@ class Evolution:
 
     def run_step(self, genome):
         self.step_count += 1
-
         is_off_line_left = (self.ground_sensors[0].getValue() / 1023 - 0.6) / 0.2 > 0.3
         is_off_line_right = (self.ground_sensors[1].getValue() / 1023 - 0.6) / 0.2 > 0.3
         is_on_line = not is_off_line_left or not is_off_line_right
@@ -134,24 +128,18 @@ class Evolution:
             self.time_first_contact = self.supervisor.getTime() - self.evaluation_start_time
 
         reward_multiplier = 0.0
-        if not is_off_line_left and not is_off_line_right:
-            reward_multiplier = 1.0
-        elif is_on_line:
-            reward_multiplier = 0.5
-
+        if not is_off_line_left and not is_off_line_right: reward_multiplier = 1.0
+        elif is_on_line: reward_multiplier = 0.5
+        
         sensor_values = [((s.getValue() / 1023.0) - 0.5) * 2 for s in self.ground_sensors]
         W1, b1, W2, b2 = self.decode_genome(genome)
         hidden = np.tanh(np.dot(sensor_values, W1) + b1)
         output = np.tanh(np.dot(hidden, W2) + b2)
-
-        left_speed = BASE_SPEED + abs(output[0]) * (MAX_SPEED - BASE_SPEED)
-        right_speed = BASE_SPEED + abs(output[1]) * (MAX_SPEED - BASE_SPEED)
-
+        left_speed = BASE_SPEED + output[0] * (MAX_SPEED - BASE_SPEED)
+        right_speed = BASE_SPEED + output[1] * (MAX_SPEED - BASE_SPEED)
         self.left_motor.setVelocity(max(min(left_speed, MAX_SPEED), 0))
         self.right_motor.setVelocity(max(min(right_speed, MAX_SPEED), 0))
-
         self.supervisor.step(self.timestep)
-
         current_position = self.translation_field.getSFVec3f()
         delta_distance = np.linalg.norm(np.array(current_position) - np.array(self.last_position))
         self.last_position = current_position
@@ -159,34 +147,28 @@ class Evolution:
 
     def run(self):
         start_gen = len(self.fitness_history)
-
         try:
             for gen in range(start_gen, GENERATIONS):
                 print(f"\n=== Geração {gen + 1}/{GENERATIONS} ===")
                 
-                # --- CÁLCULO DOS PARÂMETROS DE MUTAÇÃO PARA ESTA GERAÇÃO ---
-                decay_progress = min(gen / MUTATION_DECAY_GENERATIONS, 1.0)
-                current_mutation_rate = INITIAL_MUTATION_RATE - (INITIAL_MUTATION_RATE - FINAL_MUTATION_RATE) * decay_progress
-                current_mutation_size = INITIAL_MUTATION_SIZE - (INITIAL_MUTATION_SIZE - FINAL_MUTATION_SIZE) * decay_progress
-                print(f"Taxa de Mutação: {current_mutation_rate:.3f}, Tamanho da Mutação: {current_mutation_size:.3f}")
+                decay_progress = min(gen / BONUS_DECAY_GENERATIONS, 1.0)
+                current_bonus = INITIAL_BONUS_MAXIMO - (INITIAL_BONUS_MAXIMO - FINAL_BONUS_MAXIMO) * decay_progress
+                print(f"Bónus Máximo de Exploração Atual: {current_bonus:.2f}")
 
                 for idx, individual in enumerate(self.population):
                     self.reset()
                     self.evaluation_start_time = self.supervisor.getTime()
-
                     print(f"  Indivíduo {idx+1}/{POPULATION_SIZE}", end="", flush=True)
 
                     while (self.supervisor.getTime() - self.evaluation_start_time < EVALUATION_TIME):
                         self.run_step(individual['genome'])
-
-                    # --- CÁLCULO DA FUNÇÃO DE FITNESS MOLDADA ---
+                    
                     fitness_execucao = self.fitness_score
                     fitness_exploracao = 0.0
-                    BONUS_MAXIMO = 10.0  # HIPERPARÂMETRO: Ajuste se necessário
-
+                    
                     if self.found_line:
                         time_factor = 1.0 - (self.time_first_contact / EVALUATION_TIME)
-                        fitness_exploracao = BONUS_MAXIMO * time_factor
+                        fitness_exploracao = current_bonus * time_factor
 
                     fitness = fitness_execucao + fitness_exploracao
                     print(f" - Execução: {fitness_execucao:.2f}, Exploração: {fitness_exploracao:.2f} -> Fitness Total: {fitness:.4f}")
@@ -202,22 +184,20 @@ class Evolution:
                     for i, fitness in enumerate(self.fitness_history):
                         writer.writerow([i + 1, fitness])
 
+                # --- IMPLEMENTAÇÃO CORRETA DO ELITISMO ---
                 parents = self.select_parents()
-                best_individual = max(self.population, key=lambda ind: ind['fitness'])
-                new_population = [best_individual]
+                new_population = parents.copy() # A elite sobrevive diretamente
 
+                # Preenche o resto da população com filhos da elite
                 while len(new_population) < POPULATION_SIZE:
                     parent1, parent2 = random.sample(parents, 2)
                     child1_genome, child2_genome = self.crossover(parent1['genome'], parent2['genome'])
                     
                     if len(new_population) < POPULATION_SIZE:
-                        # Passa os parâmetros de mutação atuais para a função
-                        mutated_genome1 = self.mutate(child1_genome, current_mutation_rate, current_mutation_size)
-                        child1 = {'genome': mutated_genome1, 'fitness': 0}
+                        child1 = {'genome': self.mutate(child1_genome), 'fitness': 0}
                         new_population.append(child1)
                     if len(new_population) < POPULATION_SIZE:
-                        mutated_genome2 = self.mutate(child2_genome, current_mutation_rate, current_mutation_size)
-                        child2 = {'genome': mutated_genome2, 'fitness': 0}
+                        child2 = {'genome': self.mutate(child2_genome), 'fitness': 0}
                         new_population.append(child2)
 
                 self.population = new_population
