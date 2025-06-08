@@ -40,7 +40,7 @@ def random_position(min_radius, max_radius, z):
     return [x, y, z]
 
 class Evolution:
-    def _init_(self):
+    def __init__(self):
         self.fitness_history = []
         self.evaluation_start_time = 0
         self.step_count = 0
@@ -240,5 +240,5 @@ def main():
     controller = Evolution()
     controller.run()
 
-if _name_ == "_main_":
+if __name__ == "__main__":
     main()
