@@ -13,11 +13,11 @@ HIDDEN = 4
 OUTPUT = 2
 GENOME_SIZE = (INPUT * HIDDEN) + HIDDEN + (HIDDEN * OUTPUT) + OUTPUT
 GENERATIONS = 3000
-MUTATION_RATE = 0.2
-MUTATION_SIZE = 0.05
+MUTATION_RATE = 0.1
+MUTATION_SIZE = 0.4
 EVALUATION_TIME = 200  # seconds
 MAX_SPEED = 6.28
-BASE_SPEED = 2.0  # always forward
+BASE_SPEED = 3.0  # always forward
 
 def random_orientation():
     angle = np.random.uniform(0, 2 * np.pi)
